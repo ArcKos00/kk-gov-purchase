@@ -1,0 +1,91 @@
+<%- include('../partials/header') %>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Замовлення (договори)</h1>
+    <a class="btn btn-primary" href="/contracts/new">+ Нове замовлення</a>
+</div>
+
+<form method="get" action="/contracts" class="card card-body mb-4">
+    <div class="row g-2">
+        <div class="col-md-2">
+            <label class="form-label small" for="number">№ договору</label>
+            <input class="form-control" id="number" name="number" value="<%= filters.number %>">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small" for="counterparty">Контрагент</label>
+            <input class="form-control" id="counterparty" name="counterparty" value="<%= filters.counterparty %>">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small" for="item">Найменування</label>
+            <input class="form-control" id="item" name="item" value="<%= filters.item %>">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small" for="dateFrom">Дата договору з</label>
+            <input class="form-control" type="date" id="dateFrom" name="dateFrom" value="<%= filters.dateFrom %>">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small" for="dateTo">по</label>
+            <input class="form-control" type="date" id="dateTo" name="dateTo" value="<%= filters.dateTo %>">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small" for="status">Стан</label>
+            <select class="form-select" id="status" name="status">
+                <option value="">усі</option>
+                <% for (const [key, s] of Object.entries(f.STATUSES)) { %>
+                    <option value="<%= key %>" <%= filters.status === key ? 'selected' : '' %>><%= s.text %></option>
+                <% } %>
+            </select>
+        </div>
+        <div class="col-md-9 d-flex align-items-end gap-2">
+            <button class="btn btn-primary" type="submit">Знайти</button>
+            <% if (hasFilters) { %><a class="btn btn-outline-secondary" href="/contracts">Скинути</a><% } %>
+        </div>
+    </div>
+</form>
+
+<% if (contracts.length === 0) { %>
+    <div class="text-muted text-center py-5"><%= hasFilters ? 'Нічого не знайдено.' : 'Ще немає жодного замовлення.' %></div>
+<% } else { %>
+    <div class="small text-muted mb-2">Знайдено: <%= contracts.length %></div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+            <tr>
+                <th>№ договору</th>
+                <th>Дата</th>
+                <th>Контрагент</th>
+                <th>Найменування</th>
+                <th>Орієнт. поставка</th>
+                <th style="min-width: 140px">Виконання</th>
+                <th>Стан</th>
+            </tr>
+            </thead>
+            <tbody>
+            <% for (const c of contracts) {
+                 const shown = itemFilter ? c.items.filter((i) => i.name_search.includes(itemFilter)) : c.items.slice(0, 3);
+                 const rest = itemFilter ? 0 : c.items.length - shown.length; %>
+                <tr class="row-link" data-href="/contracts/<%= c.id %>">
+                    <td><a class="fw-semibold" href="/contracts/<%= c.id %>"><%= c.number %></a></td>
+                    <td class="text-nowrap"><%= f.date(c.contract_date) %></td>
+                    <td><%= c.counterparty %></td>
+                    <td class="small">
+                        <% for (const i of shown) { %>
+                            <div>
+                                <%= i.name %>
+                                <span class="text-muted">— <%= f.qty(i.quantity) %> <%= i.unit %>
+                                    (отр. <%= f.qty(i.received) %>, очік. <%= f.qty(i.pending) %><% if (i.cancelled_quantity > 0) { %>, не зможуть <%= f.qty(i.cancelled_quantity) %><% } %>)</span>
+                            </div>
+                        <% } %>
+                        <% if (rest > 0) { %><div class="text-muted">і ще <%= rest %>…</div><% } %>
+                    </td>
+                    <td class="text-nowrap"><%= f.date(c.expected_delivery_date) %></td>
+                    <td><%- include('../partials/progress', { total: c.total, received: c.received, cancelled: c.cancelled }) %></td>
+                    <td><%- include('../partials/status', { status: c.status }) %></td>
+                </tr>
+            <% } %>
+            </tbody>
+        </table>
+    </div>
+<% } %>
+
+<%- include('../partials/footer') %>

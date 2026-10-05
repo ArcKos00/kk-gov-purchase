@@ -1,0 +1,60 @@
+<%- include('../partials/header') %>
+<% const rowsById = new Map(form.rows.map((r) => [r.id, r])); %>
+
+<a href="/contracts/<%= contract.id %>" class="small">&larr; до договору</a>
+<h1 class="h3 mb-1">Недопоставка та дата поставки</h1>
+<p class="text-muted">Договір № <%= contract.number %> · <%= contract.counterparty %></p>
+
+<form method="post" action="/contracts/<%= contract.id %>/update">
+    <% if (errors._) { %><div class="alert alert-danger"><%= errors._ %></div><% } %>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <label class="form-label" for="expected_delivery_date">Орієнтовна дата поставки</label>
+            <input class="form-control <%= errors.expected_delivery_date ? 'is-invalid' : '' %>" style="max-width: 220px" type="date"
+                   id="expected_delivery_date" name="expected_delivery_date" value="<%= form.expected_delivery_date %>">
+            <%- include('../partials/error-text', { message: errors.expected_delivery_date }) %>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">Кількість, яку постачальник <span class="text-danger">не зможе</span> поставити</div>
+        <div class="card-body p-0">
+            <table class="table mb-0 align-middle">
+                <thead class="table-light">
+                <tr>
+                    <th>Найменування</th>
+                    <th class="text-end">Замовлено</th>
+                    <th class="text-end">Отримано</th>
+                    <th style="width: 160px">Не зможуть</th>
+                    <th>Причина</th>
+                </tr>
+                </thead>
+                <tbody>
+                <% contract.items.forEach((item, i) => { const r = rowsById.get(item.id) ?? { cancelled: item.cancelled_quantity, reason: item.cancel_reason ?? '' }; %>
+                    <tr>
+                        <td>
+                            <input type="hidden" name="rows[<%= i %>][id]" value="<%= item.id %>">
+                            <%= item.name %>
+                        </td>
+                        <td class="text-end text-nowrap"><%= f.qty(item.quantity) %> <%= item.unit %></td>
+                        <td class="text-end text-nowrap"><%= f.qty(item.received) %></td>
+                        <td>
+                            <input class="form-control <%= errors[`rows.${i}`] ? 'is-invalid' : '' %>" type="number" step="any" min="0"
+                                   max="<%= f.qtyInput(Math.max(0, item.quantity - item.received)) %>"
+                                   name="rows[<%= i %>][cancelled]" value="<%= f.qtyInput(r.cancelled) %>">
+                            <%- include('../partials/error-text', { message: errors[`rows.${i}`] }) %>
+                        </td>
+                        <td><input class="form-control" name="rows[<%= i %>][reason]" value="<%= r.reason %>" maxlength="1000"></td>
+                    </tr>
+                <% }) %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Зберегти</button>
+    <a href="/contracts/<%= contract.id %>" class="btn btn-link">Скасувати</a>
+</form>
+
+<%- include('../partials/footer') %>

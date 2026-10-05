@@ -1,0 +1,125 @@
+<%- include('../partials/header') %>
+<%
+  const isEdit = Boolean(form.id);
+  const back = isEdit ? `/contracts/${form.id}` : '/contracts';
+  const err = (key) => include('../partials/error-text', { message: errors[key] });
+  const invalid = (key) => (errors[key] ? 'is-invalid' : '');
+%>
+
+<a href="<%= back %>" class="small">&larr; назад</a>
+<h1 class="h3 mb-3"><%= title %></h1>
+
+<form method="post" action="<%= isEdit ? `/contracts/${form.id}/edit` : '/contracts' %>" enctype="multipart/form-data" id="contract-form">
+    <% if (errors._) { %><div class="alert alert-danger"><%= errors._ %></div><% } %>
+
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">Договір</div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label" for="number">Номер договору</label>
+                <input class="form-control <%= invalid('number') %>" id="number" name="number" value="<%= form.number %>" maxlength="100" required autocomplete="off">
+                <%- err('number') %>
+            </div>
+            <div class="col-md-8">
+                <label class="form-label" for="counterparty">Контрагент</label>
+                <input class="form-control <%= invalid('counterparty') %>" id="counterparty" name="counterparty" value="<%= form.counterparty %>" maxlength="300" required list="counterparties">
+                <datalist id="counterparties">
+                    <% for (const cp of counterparties) { %><option value="<%= cp %>"></option><% } %>
+                </datalist>
+                <%- err('counterparty') %>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="contract_date">Дата договору</label>
+                <input class="form-control <%= invalid('contract_date') %>" type="date" id="contract_date" name="contract_date" value="<%= form.contract_date %>" required>
+                <%- err('contract_date') %>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="expected_delivery_date">Орієнтовна дата поставки</label>
+                <input class="form-control <%= invalid('expected_delivery_date') %>" type="date" id="expected_delivery_date" name="expected_delivery_date" value="<%= form.expected_delivery_date %>">
+                <%- err('expected_delivery_date') %>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="file">Файл договору</label>
+                <input class="form-control" type="file" id="file" name="file">
+                <% if (form.file_id) { %>
+                    <div class="small mt-1">
+                        Поточний: <a href="/files/<%= form.file_id %>"><%= form.file_name %></a>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="remove_file" name="remove_file" value="1" <%= form.remove_file ? 'checked' : '' %>>
+                            <label class="form-check-label" for="remove_file">Видалити поточний файл</label>
+                        </div>
+                    </div>
+                <% } %>
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="notes">Примітки</label>
+                <textarea class="form-control" id="notes" name="notes" rows="2" maxlength="2000"><%= form.notes %></textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+            Найменування
+            <button type="button" class="btn btn-sm btn-outline-primary" id="add-item">+ Додати рядок</button>
+        </div>
+        <div class="card-body p-0">
+            <table class="table mb-0 align-middle">
+                <thead class="table-light">
+                <tr>
+                    <th>Найменування</th>
+                    <th style="width: 170px">Кількість</th>
+                    <th style="width: 110px">Од. виміру</th>
+                    <% if (isEdit) { %><th style="width: 110px" class="text-end">Отримано</th><% } %>
+                    <th style="width: 50px"></th>
+                </tr>
+                </thead>
+                <tbody id="items">
+                <% form.items.forEach((row, i) => { %>
+                    <tr class="item-row">
+                        <td>
+                            <% if (row.id) { %><input type="hidden" name="items[<%= i %>][id]" value="<%= row.id %>"><% } %>
+                            <input class="form-control <%= invalid(`items.${i}.name`) %>" name="items[<%= i %>][name]" value="<%= row.name %>" maxlength="500" required>
+                            <%- err(`items.${i}.name`) %>
+                        </td>
+                        <td>
+                            <input class="form-control <%= invalid(`items.${i}.quantity`) %>" type="number" step="any" min="0" name="items[<%= i %>][quantity]" value="<%= f.qtyInput(row.quantity) %>" required>
+                            <%- err(`items.${i}.quantity`) %>
+                        </td>
+                        <td>
+                            <input class="form-control <%= invalid(`items.${i}.unit`) %>" name="items[<%= i %>][unit]" value="<%= row.unit %>" maxlength="20" required>
+                            <%- err(`items.${i}.unit`) %>
+                        </td>
+                        <% if (isEdit) { %><td class="text-end"><%= row.id ? f.qty(row.received) : '' %></td><% } %>
+                        <td class="text-end">
+                            <% if (row.received > 0) { %>
+                                <span class="text-muted" title="Є поставки — видалити не можна">&#128274;</span>
+                            <% } else { %>
+                                <button type="button" class="btn btn-sm btn-outline-danger remove-item" title="Видалити рядок">&times;</button>
+                            <% } %>
+                        </td>
+                    </tr>
+                <% }) %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <template id="item-template">
+        <tr class="item-row">
+            <td><input class="form-control" name="items[#][name]" maxlength="500" required></td>
+            <td><input class="form-control" type="number" step="any" min="0" name="items[#][quantity]" required></td>
+            <td><input class="form-control" name="items[#][unit]" value="шт" maxlength="20" required></td>
+            <% if (isEdit) { %><td></td><% } %>
+            <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-danger remove-item" title="Видалити рядок">&times;</button>
+            </td>
+        </tr>
+    </template>
+
+    <button type="submit" class="btn btn-primary"><%= isEdit ? 'Зберегти зміни' : 'Створити замовлення' %></button>
+    <a href="<%= back %>" class="btn btn-link">Скасувати</a>
+</form>
+
+<script>document.addEventListener('DOMContentLoaded', () => initItemRows());</script>
+<%- include('../partials/footer') %>

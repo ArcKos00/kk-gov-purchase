@@ -1,0 +1,15 @@
+html {
+    font-size: 15px;
+}
+
+.row-link {
+    cursor: pointer;
+}
+
+.pre-line {
+    white-space: pre-line;
+}
+
+.table td .form-control {
+    min-width: 80px;
+}
