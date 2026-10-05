@@ -1,23 +1,21 @@
 {
   "name": "order-tracking",
-  "version": "1.0.0",
   "private": true,
-  "description": "Простий облік замовлень за договорами",
-  "type": "module",
+  "description": "Облік замовлень: NestJS (BFF) + React + PostgreSQL",
+  "workspaces": [
+    "packages/shared",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/web && npm run build -w apps/api",
+    "start": "npm run start -w apps/api",
+    "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
+    "test": "npm test -w apps/api"
+  },
   "engines": {
     "node": ">=20"
-  },
-  "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "migrate": "node src/migrate.js",
-    "test": "node --test \"test/**/*.test.js\""
-  },
-  "dependencies": {
-    "bootstrap": "^5.3.8",
-    "ejs": "^3.1.10",
-    "express": "^5.1.0",
-    "multer": "^2.0.2",
-    "pg": "^8.16.3"
   }
 }

@@ -362,4 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 # order-tracking: локальні завантажені файли
-order-tracking/data/
+order-tracking/**/data/uploads/
+order-tracking/**/*.tsbuildinfo
+order-tracking/**/dist/
