@@ -365,3 +365,6 @@ FodyWeavers.xsd
 order-tracking/**/data/uploads/
 order-tracking/**/*.tsbuildinfo
 order-tracking/**/dist/
+
+# order-tracking: npm-воркспейс packages/shared — не NuGet-пакети (див. **/[Pp]ackages/* вище)
+!order-tracking/packages/*
