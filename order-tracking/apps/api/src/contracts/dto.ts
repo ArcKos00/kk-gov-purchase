@@ -4,7 +4,7 @@ import {
   Min, ValidateIf, ValidateNested,
 } from 'class-validator';
 import type {
-  ContractInput, ContractItemInput, ContractSearch, ContractStatus, ShortfallInput,
+  ContractFilter, ContractInput, ContractItemInput, ContractSearch, ContractSort, ShortfallInput, SortDir, YesNo,
 } from '@order-tracking/shared';
 
 export const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -24,6 +24,12 @@ export class ContractItemDto implements ContractItemInput {
   @IsPositive({ message: 'Кількість має бути більшою за 0' })
   @Max(MAX_QTY, { message: 'Завелика кількість' })
   quantity: number;
+
+  @ValidateIf((o) => o.price !== null && o.price !== undefined)
+  @IsNumber({ maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false }, { message: 'Вкажіть ціну (до 2 знаків після коми)' })
+  @Min(0, { message: 'Ціна не може бути від’ємною' })
+  @Max(1e12, { message: 'Завелика ціна' })
+  price?: number | null;
 }
 
 export class ContractDto implements ContractInput {
@@ -68,13 +74,39 @@ export class ShortfallDto implements ShortfallInput {
   items: ShortfallItemDto[];
 }
 
-const STATUSES: ContractStatus[] = ['waiting', 'partial', 'overdue', 'completed'];
+const YES_NO = ['yes', 'no'];
+const STATUS_LIST = /^(waiting|partial|overdue|completed)(,(waiting|partial|overdue|completed))*$/;
+const DECIMAL = /^\d+(\.\d+)?$/;
+const SORTS: ContractSort[] = [
+  'relevance', 'contractDate', 'number', 'counterparty', 'expectedDeliveryDate', 'quantity', 'pending', 'amount',
+  'progress', 'status', 'lastDeliveryDate',
+];
 
-export class SearchDto implements ContractSearch {
-  @IsOptional() @IsString() number?: string;
-  @IsOptional() @IsString() counterparty?: string;
-  @IsOptional() @IsString() item?: string;
+/** Фільтр договорів (query string). Спільний для списку, аналітики та експорту. */
+export class ContractFilterDto implements ContractFilter {
+  @IsOptional() @IsString() @MaxLength(200) q?: string;
+  @IsOptional() @IsString() @MaxLength(100) number?: string;
+  @IsOptional() @IsString() @MaxLength(300) counterparty?: string;
+  @IsOptional() @IsString() @MaxLength(500) item?: string;
   @IsOptional() @Matches(DATE) dateFrom?: string;
   @IsOptional() @Matches(DATE) dateTo?: string;
-  @IsOptional() @IsIn(STATUSES) status?: ContractStatus;
+  @IsOptional() @Matches(DATE) expectedFrom?: string;
+  @IsOptional() @Matches(DATE) expectedTo?: string;
+  @IsOptional() @Matches(DATE) deliveryFrom?: string;
+  @IsOptional() @Matches(DATE) deliveryTo?: string;
+  @IsOptional() @Matches(STATUS_LIST, { message: 'Некоректний стан' }) status?: string;
+  @IsOptional() @IsIn(YES_NO) hasFile?: YesNo;
+  @IsOptional() @IsIn(YES_NO) hasShortfall?: YesNo;
+  @IsOptional() @IsIn(YES_NO) hasDeliveries?: YesNo;
+  @IsOptional() @Matches(DECIMAL) amountMin?: string;
+  @IsOptional() @Matches(DECIMAL) amountMax?: string;
+  @IsOptional() @Matches(DECIMAL) quantityMin?: string;
+  @IsOptional() @Matches(DECIMAL) quantityMax?: string;
+}
+
+export class ContractSearchDto extends ContractFilterDto implements ContractSearch {
+  @IsOptional() @IsIn(SORTS) sort?: ContractSort;
+  @IsOptional() @IsIn(['asc', 'desc']) dir?: SortDir;
+  @IsOptional() @Matches(/^\d{1,6}$/) page?: string;
+  @IsOptional() @Matches(/^\d{1,4}$/) pageSize?: string;
 }

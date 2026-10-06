@@ -1,15 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Not } from 'typeorm';
-import type { ContractDetails, ContractSummary } from '@order-tracking/shared';
+import type { ContractDetails, ContractSummary, Page } from '@order-tracking/shared';
 import { Contract, Delivery, OrderItem, StoredFile } from '../database/entities';
-import { orNull, qty, round3, searchText, today } from '../common/text';
+import { orNull, qty, round2, round3, searchText, today } from '../common/text';
 import { fail } from '../common/validation';
 import { FilesService } from '../files/files.service';
 import { details, loadItems, summary } from './contract-view';
-import { ContractDto, SearchDto, ShortfallDto } from './dto';
-
-const escapeLike = (s: string) => s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+import { ContractDto, ContractSearchDto, ShortfallDto } from './dto';
+import { ContractQuery } from './contract-query';
+import { paging } from '../common/sql';
+import { SET_SIMILARITY } from '../common/text-query';
 
 @Injectable()
 export class ContractsService {
@@ -27,25 +28,40 @@ export class ContractsService {
 
   // ---------- Перегляд і пошук ----------
 
-  async search(f: SearchDto): Promise<ContractSummary[]> {
-    const qb = this.ds.manager.createQueryBuilder(Contract, 'c');
-    const like = (s: string) => `%${escapeLike(searchText(s))}%`;
-    if (f.number?.trim()) qb.andWhere('c.number_search LIKE :number', { number: like(f.number) });
-    if (f.counterparty?.trim()) qb.andWhere('c.counterparty_search LIKE :cp', { cp: like(f.counterparty) });
-    if (f.item?.trim()) {
-      qb.andWhere(
-        'EXISTS (SELECT 1 FROM order_items i WHERE i.contract_id = c.id AND i.name_search LIKE :item)',
-        { item: like(f.item) },
-      );
-    }
-    if (f.dateFrom) qb.andWhere('c.contract_date >= :from', { from: f.dateFrom });
-    if (f.dateTo) qb.andWhere('c.contract_date <= :to', { to: f.dateTo });
-    const contracts = await qb.orderBy('c.contract_date', 'DESC').addOrderBy('c.id', 'DESC').getMany();
-
-    const items = await loadItems(this.ds.manager, contracts.map((c) => c.id));
+  async search(f: ContractSearchDto): Promise<Page<ContractSummary>> {
     const now = today();
-    const list = contracts.map((c) => summary(c, items.get(c.id)!, now));
-    return f.status ? list.filter((c) => c.status === f.status) : list;
+    const query = new ContractQuery(f, now);
+    const { page, pageSize, offset } = paging(f.page, f.pageSize, 25, 200);
+    return this.ds.transaction(async (em) => {
+      await em.query(SET_SIMILARITY);
+      const rows: { id: number; total: string; deliveries_count: number; last_delivery_date: string | null }[] = await em.query(
+        `SELECT c.id, count(*) OVER () AS total, ${query.text.contractScore('c')} AS score,
+                ds.deliveries_count, ds.last_delivery_date::text AS last_delivery_date
+           FROM ${query.from}
+           ${query.where()}
+          ORDER BY ${query.orderBy(f.sort, f.dir)}
+          LIMIT ${pageSize} OFFSET ${offset}`,
+        query.sql.params,
+      );
+      const total = rows.length ? Number(rows[0].total) : offset > 0 ? await this.count(em, query) : 0;
+      const ids = rows.map((r) => r.id);
+      const contracts = new Map((ids.length ? await em.findBy(Contract, { id: In(ids) }) : []).map((c) => [c.id, c]));
+      const items = await loadItems(em, ids);
+      return {
+        items: rows.map((r) => summary(contracts.get(r.id)!, items.get(r.id)!, now, {
+          deliveriesCount: r.deliveries_count,
+          lastDeliveryDate: r.last_delivery_date,
+        })),
+        total,
+        page,
+        pageSize,
+      };
+    });
+  }
+
+  private async count(em: EntityManager, query: ContractQuery): Promise<number> {
+    const [row] = await em.query(`SELECT count(*) AS total FROM ${query.from} ${query.where()}`, query.sql.params);
+    return Number(row.total);
   }
 
   async get(id: number): Promise<ContractDetails> {
@@ -88,8 +104,14 @@ export class ContractsService {
     c.notes = orNull(dto.notes);
   }
 
-  private itemFields(i: { name: string; unit: string; quantity: number }) {
-    return { name: i.name.trim(), nameSearch: searchText(i.name), unit: i.unit.trim(), quantity: round3(i.quantity) };
+  private itemFields(i: { name: string; unit: string; quantity: number; price?: number | null }) {
+    return {
+      name: i.name.trim(),
+      nameSearch: searchText(i.name),
+      unit: i.unit.trim(),
+      quantity: round3(i.quantity),
+      price: i.price === null || i.price === undefined ? null : round2(i.price),
+    };
   }
 
   async create(dto: ContractDto): Promise<ContractDetails> {

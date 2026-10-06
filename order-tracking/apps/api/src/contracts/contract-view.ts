@@ -1,9 +1,9 @@
 import { EntityManager, In } from 'typeorm';
 import type {
-  ContractDetails, ContractStatus, ContractSummary, FileInfo, OrderItem as OrderItemView,
+  ContractDetails, ContractStatus, ContractSummary, FileInfo, OrderItem as OrderItemView, Totals,
 } from '@order-tracking/shared';
 import { Contract, Delivery, DeliveryLine, OrderItem, StoredFile } from '../database/entities';
-import { round3 } from '../common/text';
+import { round2, round3 } from '../common/text';
 
 export const fileInfo = (f: StoredFile | null | undefined): FileInfo | null =>
   f ? { id: f.id, name: f.originalName, size: f.size } : null;
@@ -32,6 +32,8 @@ export async function loadItems(em: EntityManager, contractIds: number[]): Promi
       name: i.name,
       unit: i.unit,
       quantity: i.quantity,
+      price: i.price,
+      amount: i.price === null ? null : round2(i.quantity * i.price),
       received: rec,
       cancelled: i.cancelledQuantity,
       cancelReason: i.cancelReason,
@@ -48,8 +50,29 @@ export function statusOf(items: OrderItemView[], expected: string | null, today:
   return items.some((i) => i.received > 0) ? 'partial' : 'waiting';
 }
 
-export function summary(c: Contract, items: OrderItemView[], today: string): ContractSummary {
+export function totalsOf(items: OrderItemView[]): Totals {
   const sum = (k: 'quantity' | 'received' | 'cancelled' | 'pending') => round3(items.reduce((s, i) => s + i[k], 0));
+  const priced = items.filter((i) => i.price !== null);
+  const money = (k: 'quantity' | 'received' | 'cancelled' | 'pending') =>
+    priced.length ? round2(priced.reduce((s, i) => s + i[k] * i.price!, 0)) : null;
+  return {
+    quantity: sum('quantity'),
+    received: sum('received'),
+    cancelled: sum('cancelled'),
+    pending: sum('pending'),
+    amount: money('quantity'),
+    receivedAmount: money('received'),
+    cancelledAmount: money('cancelled'),
+    pendingAmount: money('pending'),
+  };
+}
+
+export interface SummaryExtra {
+  deliveriesCount: number;
+  lastDeliveryDate: string | null;
+}
+
+export function summary(c: Contract, items: OrderItemView[], today: string, extra: SummaryExtra): ContractSummary {
   return {
     id: c.id,
     number: c.number,
@@ -57,8 +80,11 @@ export function summary(c: Contract, items: OrderItemView[], today: string): Con
     contractDate: c.contractDate,
     expectedDeliveryDate: c.expectedDeliveryDate,
     status: statusOf(items, c.expectedDeliveryDate, today),
-    totals: { quantity: sum('quantity'), received: sum('received'), cancelled: sum('cancelled'), pending: sum('pending') },
+    totals: totalsOf(items),
     items,
+    hasFile: c.fileId !== null,
+    deliveriesCount: extra.deliveriesCount,
+    lastDeliveryDate: extra.lastDeliveryDate,
   };
 }
 
@@ -71,7 +97,10 @@ export async function details(em: EntityManager, c: Contract, today: string): Pr
   });
   const file = c.fileId ? await em.findOneBy(StoredFile, { id: c.fileId }) : null;
   return {
-    ...summary(c, items, today),
+    ...summary(c, items, today, {
+      deliveriesCount: deliveries.length,
+      lastDeliveryDate: deliveries[0]?.date ?? null,
+    }),
     notes: c.notes,
     file: fileInfo(file),
     deliveries: deliveries.map((d) => ({

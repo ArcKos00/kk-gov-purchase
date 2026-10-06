@@ -4,14 +4,16 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { uploadOptions } from '../common/multipart';
 import { ContractsService } from './contracts.service';
-import { ContractDto, SearchDto, ShortfallDto } from './dto';
+import { ContractDto, ContractSearchDto, ShortfallDto } from './dto';
+import { ContractScope } from '../audit/audit-scope';
 
 @Controller('contracts')
+@ContractScope('id')
 export class ContractsController {
   constructor(private readonly contracts: ContractsService) {}
 
   @Get()
-  search(@Query() query: SearchDto) {
+  search(@Query() query: ContractSearchDto) {
     return this.contracts.search(query);
   }
 

@@ -1,6 +1,7 @@
 export const searchText = (s?: string | null) => (s ?? '').trim().toUpperCase();
 
 export const round3 = (n: number) => Math.round(n * 1000) / 1000;
+export const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export function today(): string {
   const d = new Date();

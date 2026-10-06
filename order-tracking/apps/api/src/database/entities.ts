@@ -1,5 +1,5 @@
 import {
-  Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn,
+  Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryColumn, PrimaryGeneratedColumn,
 } from 'typeorm';
 import { numeric } from './numeric.transformer';
 
@@ -44,6 +44,8 @@ export class OrderItem {
   @Index() @Column('text') nameSearch: string;
   @Column('text', { default: 'шт' }) unit: string;
   @Column('numeric', { precision: 14, scale: 3, transformer: numeric }) quantity: number;
+  /** Ціна за одиницю, грн */
+  @Column('numeric', { precision: 16, scale: 2, nullable: true, transformer: numeric }) price: number | null;
   /** "Не зможуть" поставити */
   @Column('numeric', { precision: 14, scale: 3, default: 0, transformer: numeric }) cancelledQuantity: number;
   @Column('text', { nullable: true }) cancelReason: string | null;
@@ -75,4 +77,51 @@ export class DeliveryLine {
   @Column('numeric', { precision: 14, scale: 3, transformer: numeric }) quantity: number;
 }
 
-export const entities = [StoredFile, Contract, OrderItem, Delivery, DeliveryLine];
+export type Role = 'admin' | 'editor' | 'viewer';
+
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn() id: number;
+  /** Логін або email; унікальний без урахування регістру */
+  @Column('text') login: string;
+  @Column('text') fullName: string;
+  @Column('text') role: Role;
+  @Column('boolean', { default: true }) active: boolean;
+  @Column('text', { select: false }) passwordHash: string;
+  @Column('int', { default: 0 }) failedLogins: number;
+  @Column('timestamptz', { nullable: true }) lockedUntil: Date | null;
+  @Column('timestamptz', { nullable: true }) lastLoginAt: Date | null;
+  @Column('timestamptz', { default: () => 'now()' }) passwordChangedAt: Date;
+  @CreateDateColumn({ type: 'timestamptz' }) createdAt: Date;
+}
+
+@Entity('sessions')
+export class Session {
+  /** HMAC(SESSION_SECRET, токен із cookie) */
+  @PrimaryColumn('text') id: string;
+  @Column('int') userId: number;
+  @ManyToOne(() => User, { onDelete: 'CASCADE' }) user: User;
+  @CreateDateColumn({ type: 'timestamptz' }) createdAt: Date;
+  @Column('timestamptz') lastSeenAt: Date;
+  @Column('timestamptz') expiresAt: Date;
+  @Column('text', { nullable: true }) ip: string | null;
+  @Column('text', { nullable: true }) userAgent: string | null;
+}
+
+@Entity('audit_log')
+export class AuditLog {
+  @PrimaryGeneratedColumn({ type: 'bigint' }) id: string;
+  @CreateDateColumn({ type: 'timestamptz' }) at: Date;
+  @Column('text') action: string;
+  @Column('text', { nullable: true }) entity: string | null;
+  @Column('bigint', { nullable: true }) entityId: string | null;
+  @Column('int', { nullable: true }) contractId: number | null;
+  @Column('int', { nullable: true }) userId: number | null;
+  @Column('text', { nullable: true }) login: string | null;
+  @Column('text', { nullable: true }) ip: string | null;
+  @Column('text', { nullable: true }) userAgent: string | null;
+  @Column('text', { nullable: true }) requestId: string | null;
+  @Column('jsonb', { nullable: true }) changes: Record<string, unknown> | null;
+}
+
+export const entities = [StoredFile, Contract, OrderItem, Delivery, DeliveryLine, User, Session, AuditLog];

@@ -5,6 +5,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { parseJsonField, uploadOptions } from '../common/multipart';
 import { DeliveriesService } from './deliveries.service';
 import { DeliveryDto } from './dto';
+import { ContractScope } from '../audit/audit-scope';
 
 @Controller()
 export class DeliveriesController {
@@ -12,6 +13,7 @@ export class DeliveriesController {
 
   /** multipart/form-data: `data` — JSON з DeliveryInput, `file` — скан накладної (необов'язково). */
   @Post('contracts/:id/deliveries')
+  @ContractScope('id')
   @UseInterceptors(FileInterceptor('file', uploadOptions))
   async create(
     @Param('id', ParseIntPipe) id: number,
