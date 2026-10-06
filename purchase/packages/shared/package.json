@@ -1,0 +1,8 @@
+{
+  "name": "@kk-gov-purchase/shared",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Спільні типи контракту API (лише типи — у рантаймі не потрібні)",
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}
