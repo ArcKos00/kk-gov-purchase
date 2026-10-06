@@ -1,89 +1,166 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
-import type { ContractSearch, ContractStatus } from '@order-tracking/shared';
-import { api } from '../api';
-import { fdate, fq, STATUS_TEXT } from '../format';
-import { LoadError, Loading, ProgressBar, StatusPill } from '../components/ui';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import type { ContractSearch, ContractSort, ContractSummary, SortDir } from '@order-tracking/shared';
+import { api } from '../lib/api';
+import { downloadCsv } from '../lib/csv';
+import { fdate, fmoney, fq, STATUS_TEXT } from '../lib/format';
+import { savedFilters, setSavedFilters, type SavedFilter } from '../lib/storage';
+import { compact, useUrlState } from '../lib/url-state';
+import { searchNorm } from '../lib/search-norm';
+import { useAuth } from '../auth/auth';
+import { ContractFilters, FILTER_KEYS, type FilterValues } from '../components/ContractFilters';
+import { useToast } from '../components/toast';
+import {
+  Empty, errorText, Highlight, LoadError, Loading, PageHead, Pagination, ProgressBar, SortTh, Spinner, StatusPill,
+} from '../components/ui';
 
-const KEYS = ['number', 'counterparty', 'item', 'dateFrom', 'dateTo', 'status'] as const;
+const KEYS = [...FILTER_KEYS, 'sort', 'dir', 'page', 'pageSize'] as const;
+const PAGE_SIZES = ['25', '50', '100'];
 
 export function ContractsPage() {
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
-  // Фільтри живуть в адресі сторінки — пошуком можна поділитися посиланням.
-  const filters: ContractSearch = Object.fromEntries(KEYS.map((k) => [k, params.get(k) ?? ''])) as ContractSearch;
-  const [draft, setDraft] = useState(filters);
-  const hasFilters = KEYS.some((k) => filters[k]);
+  const { canEdit } = useAuth();
+  const toast = useToast();
+  const { values, set, reset } = useUrlState(KEYS);
+  const [, setParams] = useSearchParams();
+  const filters = Object.fromEntries(FILTER_KEYS.map((k) => [k, values[k]])) as FilterValues;
+  const hasFilters = FILTER_KEYS.some((k) => values[k]);
+  const query = compact(values) as ContractSearch;
 
-  const { data, error, isPending } = useQuery({
-    queryKey: ['contracts', filters],
-    queryFn: () => api.search(filters),
+  const { data, error, isPending, isFetching, refetch } = useQuery({
+    queryKey: ['contracts', query],
+    queryFn: () => api.search(query),
+    placeholderData: keepPreviousData,
   });
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    setParams(Object.fromEntries(Object.entries(draft).filter(([, v]) => v && String(v).trim())));
+  const sort = (values.sort || undefined) as ContractSort | undefined;
+  const dir = (values.dir || undefined) as SortDir | undefined;
+  const onSort = (s: ContractSort, d: SortDir) => set({ sort: s, dir: d, page: '' });
+  const words = useMemo(() => [values.q, values.item].join(' ').split(/\s+/).filter(Boolean), [values.q, values.item]);
+  const itemNeedle = searchNorm(values.item.trim());
+
+  // ---- збережені пошуки (у браузері) ----
+  const [saved, setSaved] = useState<SavedFilter[]>(savedFilters);
+  const currentQs = new URLSearchParams(compact(filters) as Record<string, string>).toString();
+  const saveCurrent = () => {
+    const name = window.prompt('Назва для збереженого пошуку:', values.q || values.counterparty || 'Мій фільтр');
+    if (!name?.trim()) return;
+    const list = [...saved.filter((s) => s.name !== name.trim()), { name: name.trim(), query: currentQs }];
+    setSaved(list);
+    setSavedFilters(list);
+    toast.ok(`Пошук «${name.trim()}» збережено.`);
   };
-  const reset = () => {
-    setDraft({});
-    setParams({});
+  const removeSaved = (name: string) => {
+    const list = saved.filter((s) => s.name !== name);
+    setSaved(list);
+    setSavedFilters(list);
   };
-  const set = (k: keyof ContractSearch) => (e: { target: { value: string } }) => setDraft({ ...draft, [k]: e.target.value });
-  const itemFilter = filters.item?.trim().toUpperCase() ?? '';
+
+  // ---- експорт усіх знайдених у CSV ----
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const rows: ContractSummary[] = [];
+      for (let page = 1; page <= 50; page++) {
+        const res = await api.search({ ...query, page: String(page), pageSize: '200' });
+        rows.push(...res.items);
+        if (rows.length >= res.total || !res.items.length) break;
+      }
+      downloadCsv(`договори-${new Date().toISOString().slice(0, 10)}`, [
+        '№ договору', 'Дата', 'Контрагент', 'Орієнт. поставка', 'Стан', 'Замовлено', 'Отримано', 'Очікуємо', 'Не зможуть',
+        'Сума, ₴', 'Отримано на суму, ₴', 'Поставок', 'Остання поставка', 'Найменування',
+      ], rows.map((c) => [
+        c.number, fdate(c.contractDate), c.counterparty, fdate(c.expectedDeliveryDate), STATUS_TEXT[c.status],
+        c.totals.quantity, c.totals.received, c.totals.pending, c.totals.cancelled, c.totals.amount, c.totals.receivedAmount,
+        c.deliveriesCount, fdate(c.lastDeliveryDate), c.items.map((i) => `${i.name} — ${i.quantity} ${i.unit}`).join('; '),
+      ]));
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <>
-      <div className="head">
-        <h1>Замовлення (договори)</h1>
-        <Link to="/contracts/new" className="btn primary">+ Нове замовлення</Link>
-      </div>
+      <PageHead
+        title="Договори"
+        subtitle="Що замовили, що приїхало, що ще очікуємо"
+        actions={canEdit && <Link to="/contracts/new" className="btn primary">＋ Новий договір</Link>}
+      />
 
-      <form className="panel panel-b" onSubmit={submit}>
-        <div className="grid">
-          <label className="f">№ договору<input id="s-number" value={draft.number ?? ''} onChange={set('number')} /></label>
-          <label className="f">Контрагент<input id="s-counterparty" value={draft.counterparty ?? ''} onChange={set('counterparty')} /></label>
-          <label className="f">Найменування<input id="s-item" value={draft.item ?? ''} onChange={set('item')} /></label>
-          <label className="f">Дата договору з<input id="s-from" type="date" value={draft.dateFrom ?? ''} onChange={set('dateFrom')} /></label>
-          <label className="f">по<input id="s-to" type="date" value={draft.dateTo ?? ''} onChange={set('dateTo')} /></label>
-          <label className="f">Стан
-            <select id="s-status" value={draft.status ?? ''} onChange={set('status')}>
-              <option value="">усі</option>
-              {(Object.keys(STATUS_TEXT) as ContractStatus[]).map((s) => <option key={s} value={s}>{STATUS_TEXT[s]}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="actions mt">
-          <button className="btn primary" type="submit">Знайти</button>
-          {hasFilters && <button className="btn" type="button" onClick={reset}>Скинути</button>}
-        </div>
-      </form>
+      <ContractFilters
+        value={filters}
+        onApply={(f) => set({ ...f, page: '' })}
+        onReset={() => reset(['sort', 'dir', 'pageSize'])}
+        extra={hasFilters && <button type="button" className="btn ghost" onClick={saveCurrent} title="Зберегти поточний пошук">☆ Зберегти</button>}
+      />
 
-      {isPending ? <Loading /> : error ? <LoadError error={error} /> : data.length === 0 ? (
-        <div className="panel empty">
-          {hasFilters ? 'Нічого не знайдено. Спробуйте інший запит або скиньте фільтри.' : 'Ще немає жодного замовлення. Створіть перше кнопкою «+ Нове замовлення».'}
+      {saved.length > 0 && (
+        <div className="chips" aria-label="Збережені пошуки">
+          <span className="small muted">Збережені:</span>
+          {saved.map((s) => (
+            <span key={s.name} className={`chip saved${s.query === currentQs ? ' on' : ''}`}>
+              <button type="button" className="link" onClick={() => setParams(new URLSearchParams(s.query))}>{s.name}</button>
+              <button type="button" aria-label={`Видалити збережений пошук ${s.name}`} onClick={() => removeSaved(s.name)}>×</button>
+            </span>
+          ))}
         </div>
+      )}
+
+      {isPending ? <Loading /> : error ? <LoadError error={error} onRetry={() => void refetch()} /> : data.total === 0 ? (
+        <Empty>
+          {hasFilters
+            ? <>Нічого не знайдено. Спробуйте інший запит або <button type="button" className="link" onClick={() => reset()}>скиньте фільтри</button>.</>
+            : <>Ще немає жодного договору.{canEdit && <> Створіть перший кнопкою «＋ Новий договір».</>}</>}
+        </Empty>
       ) : (
         <>
-          <div className="small muted">Знайдено: {data.length}</div>
+          <div className="list-bar">
+            <span className="small muted">Знайдено: <b>{fq(data.total)}</b> {isFetching && <Spinner />}</span>
+            <span className="actions">
+              <label className="small muted inline">На сторінці
+                <select value={values.pageSize || '25'} onChange={(e) => set({ pageSize: e.target.value === '25' ? '' : e.target.value, page: '' })} style={{ width: 'auto' }}>
+                  {PAGE_SIZES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </label>
+              <button type="button" className="btn sm" onClick={() => void exportCsv()} disabled={exporting}>
+                {exporting ? 'Експорт…' : '⇩ CSV'}
+              </button>
+            </span>
+          </div>
           <div className="panel tbl-box">
-            <table>
+            <table className="list-tbl">
               <thead>
-                <tr><th>№ договору</th><th>Дата</th><th>Контрагент</th><th>Найменування</th><th>Орієнт. поставка</th><th>Виконання</th><th>Стан</th></tr>
+                <tr>
+                  <SortTh label="№ договору" field="number" sort={sort} dir={dir} onSort={onSort} />
+                  <SortTh label="Дата" field="contractDate" sort={sort} dir={dir} onSort={onSort} />
+                  <SortTh label="Контрагент" field="counterparty" sort={sort} dir={dir} onSort={onSort} />
+                  <th>Найменування</th>
+                  <SortTh label="Сума" field="amount" sort={sort} dir={dir} onSort={onSort} className="r" />
+                  <SortTh label="Орієнт. поставка" field="expectedDeliveryDate" sort={sort} dir={dir} onSort={onSort} />
+                  <SortTh label="Виконання" field="progress" sort={sort} dir={dir} onSort={onSort} />
+                  <SortTh label="Стан" field="status" sort={sort} dir={dir} onSort={onSort} />
+                </tr>
               </thead>
               <tbody>
-                {data.map((c) => {
-                  const shown = itemFilter ? c.items.filter((i) => i.name.toUpperCase().includes(itemFilter)) : c.items.slice(0, 3);
-                  const rest = itemFilter ? 0 : c.items.length - shown.length;
+                {data.items.map((c) => {
+                  const shown = itemNeedle ? c.items.filter((i) => searchNorm(i.name).includes(itemNeedle)) : c.items.slice(0, 3);
+                  const rest = c.items.length - shown.length;
                   return (
-                    <tr key={c.id} className="clickable" onClick={(e) => { if (!(e.target as HTMLElement).closest('a')) navigate(`/contracts/${c.id}`); }}>
-                      <td className="tight"><Link to={`/contracts/${c.id}`}><b>{c.number}</b></Link></td>
+                    <tr key={c.id} className="clickable" onClick={(e) => { if (!(e.target as HTMLElement).closest('a,button')) navigate(`/contracts/${c.id}`); }}>
+                      <td className="tight">
+                        <Link to={`/contracts/${c.id}`}><b><Highlight text={c.number} words={words} /></b></Link>
+                        {c.hasFile && <span className="muted small" title="Є файл договору"> 📎</span>}
+                      </td>
                       <td className="tight num">{fdate(c.contractDate)}</td>
-                      <td>{c.counterparty}</td>
+                      <td><Highlight text={c.counterparty} words={words} /></td>
                       <td className="small">
                         {shown.map((i) => (
                           <div key={i.id}>
-                            {i.name}{' '}
+                            <Highlight text={i.name} words={words} />{' '}
                             <span className="muted">
                               — {fq(i.quantity)} {i.unit} (отр. {fq(i.received)}, очік. {fq(i.pending)}
                               {i.cancelled > 0 && `, не зможуть ${fq(i.cancelled)}`})
@@ -92,6 +169,7 @@ export function ContractsPage() {
                         ))}
                         {rest > 0 && <div className="muted">і ще {rest}…</div>}
                       </td>
+                      <td className="r tight num">{fmoney(c.totals.amount)}</td>
                       <td className="tight num">{fdate(c.expectedDeliveryDate)}</td>
                       <td><ProgressBar total={c.totals.quantity} received={c.totals.received} cancelled={c.totals.cancelled} /></td>
                       <td><StatusPill status={c.status} /></td>
@@ -101,6 +179,8 @@ export function ContractsPage() {
               </tbody>
             </table>
           </div>
+          <Pagination page={data.page} pageSize={data.pageSize} total={data.total}
+            onPage={(p) => { set({ page: p === 1 ? '' : String(p) }); window.scrollTo({ top: 0 }); }} />
         </>
       )}
     </>

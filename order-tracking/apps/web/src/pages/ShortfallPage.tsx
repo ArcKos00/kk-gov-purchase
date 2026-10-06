@@ -2,8 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ContractDetails } from '@order-tracking/shared';
-import { api } from '../api';
-import { fq, parseQty } from '../format';
+import { api } from '../lib/api';
+import { fq, parseQty } from '../lib/format';
 import { FieldError, FormError, LoadError, Loading, useFieldErrors } from '../components/ui';
 
 /** Недопоставка ("не зможуть") і орієнтовна дата поставки. */
@@ -36,6 +36,7 @@ function ShortfallForm({ contract: c }: { contract: ContractDetails }) {
     onSuccess: (saved) => {
       qc.setQueryData(['contract', c.id], saved);
       qc.invalidateQueries({ queryKey: ['contracts'] });
+      qc.invalidateQueries({ queryKey: ['contract-history', c.id] });
       navigate(`/contracts/${c.id}`, { state: { flash: 'Стан договору оновлено.' } });
     },
   });

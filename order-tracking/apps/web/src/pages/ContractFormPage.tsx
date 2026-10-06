@@ -2,8 +2,8 @@ import { useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ContractDetails, ContractInput } from '@order-tracking/shared';
-import { api } from '../api';
-import { fq, parseQty, today } from '../format';
+import { api, ApiError } from '../lib/api';
+import { fmoney, fq, parseMoney, parseQty, today } from '../lib/format';
 import { FieldError, FormError, LoadError, Loading, useFieldErrors } from '../components/ui';
 
 interface Row {
@@ -12,6 +12,7 @@ interface Row {
   name: string;
   unit: string;
   quantity: string;
+  price: string;
   received: number;
 }
 
@@ -35,7 +36,7 @@ function ContractForm({ existing }: { existing?: ContractDetails }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const nextKey = useRef(1);
-  const newRow = (): Row => ({ key: nextKey.current++, name: '', unit: 'шт', quantity: '', received: 0 });
+  const newRow = (): Row => ({ key: nextKey.current++, name: '', unit: 'шт', quantity: '', price: '', received: 0 });
 
   const [number, setNumber] = useState(existing?.number ?? '');
   const [counterparty, setCounterparty] = useState(existing?.counterparty ?? '');
@@ -46,7 +47,7 @@ function ContractForm({ existing }: { existing?: ContractDetails }) {
   const [removeFile, setRemoveFile] = useState(false);
   const [rows, setRows] = useState<Row[]>(() =>
     existing
-      ? existing.items.map((i) => ({ key: nextKey.current++, id: i.id, name: i.name, unit: i.unit, quantity: String(i.quantity), received: i.received }))
+      ? existing.items.map((i) => ({ key: nextKey.current++, id: i.id, name: i.name, unit: i.unit, quantity: String(i.quantity), price: i.price === null ? '' : String(i.price), received: i.received }))
       : [newRow()],
   );
 
@@ -54,13 +55,16 @@ function ContractForm({ existing }: { existing?: ContractDetails }) {
 
   const save = useMutation({
     mutationFn: async () => {
+      const priceErrors = Object.fromEntries(rows.flatMap((r, i) =>
+        Number.isNaN(parseMoney(r.price)) ? [[`items.${i}.price`, 'Ціна — число, до 2 знаків після коми']] : []));
+      if (Object.keys(priceErrors).length) throw new ApiError(422, 'Перевірте введені дані', priceErrors);
       const input: ContractInput = {
         number,
         counterparty,
         contractDate,
         expectedDeliveryDate: expected || null,
         notes: notes || null,
-        items: rows.map((r) => ({ id: r.id, name: r.name, unit: r.unit, quantity: parseQty(r.quantity) as number })),
+        items: rows.map((r) => ({ id: r.id, name: r.name, unit: r.unit, quantity: parseQty(r.quantity) as number, price: parseMoney(r.price) })),
       };
       let saved = existing ? await api.update(existing.id, input) : await api.create(input);
       let fileError = false;
@@ -76,6 +80,7 @@ function ContractForm({ existing }: { existing?: ContractDetails }) {
       qc.setQueryData(['contract', saved.id], saved);
       qc.invalidateQueries({ queryKey: ['contracts'] });
       qc.invalidateQueries({ queryKey: ['counterparties'] });
+      qc.invalidateQueries({ queryKey: ['contract-history', saved.id] });
       const msg = existing ? 'Зміни збережено.' : `Договір № ${saved.number} створено.`;
       navigate(`/contracts/${saved.id}`, {
         state: { flash: fileError ? `${msg} Але файл договору не вдалося зберегти — спробуйте ще раз у редагуванні.` : msg },
@@ -94,7 +99,7 @@ function ContractForm({ existing }: { existing?: ContractDetails }) {
   return (
     <>
       <div><Link to={back} className="small">← назад</Link></div>
-      <div className="head"><h1>{existing ? `Редагування договору № ${existing.number}` : 'Нове замовлення'}</h1></div>
+      <div className="head"><h1>{existing ? `Редагування договору № ${existing.number}` : 'Новий договір'}</h1></div>
 
       <form onSubmit={submit} noValidate className="stack">
         <FormError error={save.error} />
@@ -142,7 +147,7 @@ function ContractForm({ existing }: { existing?: ContractDetails }) {
           <div className="tbl-box">
             <table className="form-tbl">
               <thead>
-                <tr><th>Найменування</th><th>Кількість</th><th>Од. виміру</th>{existing && <th className="r">Отримано</th>}<th /></tr>
+                <tr><th>Найменування</th><th>Кількість</th><th>Од. виміру</th><th>Ціна за од., ₴</th><th className="r">Сума</th>{existing && <th className="r">Отримано</th>}<th /></tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => (
@@ -161,6 +166,15 @@ function ContractForm({ existing }: { existing?: ContractDetails }) {
                       <input aria-label="Од. виміру" name={`items.${i}.unit`} value={r.unit} maxLength={20} onChange={(e) => { updateRow(r.key, { unit: e.target.value }); touch(`items.${i}.unit`); }} />
                       <FieldError message={err(`items.${i}.unit`)} />
                     </td>
+                    <td style={{ width: 140 }}>
+                      <input aria-label="Ціна за одиницю" name={`items.${i}.price`} inputMode="decimal" placeholder="необов’язково" className={err(`items.${i}.price`) ? 'invalid' : ''}
+                        value={r.price} onChange={(e) => { updateRow(r.key, { price: e.target.value }); touch(`items.${i}.price`); }} />
+                      <FieldError message={err(`items.${i}.price`)} />
+                    </td>
+                    <td className="r num tight small">{(() => {
+                      const q = parseQty(r.quantity), p = parseMoney(r.price);
+                      return q && p !== null && !Number.isNaN(q) && !Number.isNaN(p) ? fmoney(Math.round(q * p * 100) / 100) : '';
+                    })()}</td>
                     {existing && <td className="r num" style={{ width: 90 }}>{r.id ? fq(r.received) : ''}</td>}
                     <td className="r" style={{ width: 50 }}>
                       {r.received > 0
@@ -176,7 +190,7 @@ function ContractForm({ existing }: { existing?: ContractDetails }) {
 
         <div className="actions">
           <button className="btn primary" type="submit" disabled={save.isPending}>
-            {save.isPending ? 'Збереження…' : existing ? 'Зберегти зміни' : 'Створити замовлення'}
+            {save.isPending ? 'Збереження…' : existing ? 'Зберегти зміни' : 'Створити договір'}
           </button>
           <Link to={back} className="btn">Скасувати</Link>
         </div>

@@ -23,7 +23,7 @@ export const currentContext = () => requestContext.getStore();
 export function requestContextMiddleware(req: Request, res: Response, next: NextFunction) {
   const ctx: RequestContext = {
     requestId: crypto.randomUUID(),
-    ip: req.ip ?? null,
+    ip: req.ip ? req.ip.replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, '') : null,
     userAgent: req.get('user-agent')?.slice(0, 500) ?? null,
   };
   res.setHeader('X-Request-Id', ctx.requestId);
