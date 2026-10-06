@@ -15,9 +15,19 @@
 # Один образ (order-tracking/Dockerfile) і один контейнер: NestJS на порту 3000 віддає /api/* і роздає
 # зібраний фронт (apps/web/dist). Схему БД застосунок накочує сам на старті (TypeORM migrationsRun).
 #
-# Секрет purchase-secret створюється руками, у yaml його немає. БД — окремий інстанс на local.storage:
+# Секрет purchase-secret створюється руками, у yaml його немає. БД — окремий інстанс на local.storage.
+# Ключі секрету (усі підхоплюються через envFrom):
+#   DATABASE_URL    — postgres://purchase:<пароль>@local.storage:5437/purchase
+#   SESSION_SECRET  — випадковий рядок ≥ 32 символів (HMAC ідентифікаторів сесій); без нього под не стартує.
+#                     Зміна ключа завершує всі сесії. Згенерувати: openssl rand -base64 48
+#   ADMIN_LOGIN     — логін першого адміністратора; створюється ЛИШЕ якщо в БД ще немає жодного
+#   ADMIN_PASSWORD  — його пароль;                   користувача. Далі — розділ «Користувачі».
 #     kubectl -n ${NAMESPACE} create secret generic purchase-secret \
-#       --from-literal=DATABASE_URL='postgres://purchase:<пароль>@local.storage:5437/purchase'
+#       --from-literal=DATABASE_URL='postgres://purchase:<пароль>@local.storage:5437/purchase' \
+#       --from-literal=SESSION_SECRET='<openssl rand -base64 48>' \
+#       --from-literal=ADMIN_LOGIN='admin' --from-literal=ADMIN_PASSWORD='<пароль>'
+#
+# БД: міграції створюють розширення pg_trgm (trusted, PG13+) — власнику БД потрібне право CREATE на базу.
 #
 # Вкладені файли (скани договорів/накладних) лежать на PVC purchase-uploads (RWO). Том RWO, тож
 # RollingUpdate працює через podAffinity до власного вузла (див. Deployment).
@@ -35,6 +45,19 @@ data:
   UPLOADS_DIR: "/app/data/uploads"
   # Максимальний розмір одного файлу, МБ.
   MAX_UPLOAD_MB: "50"
+  # Звідки брати реальну IP клієнта (X-Forwarded-For): YARP → haproxy ingress → под.
+  # Довіряємо приватним мережам; число = кількість проксі, "true" = довіряти всім.
+  TRUST_PROXY: "loopback, linklocal, uniquelocal"
+  # Сесії: cookie лише по HTTPS; без активності сесія живе SESSION_IDLE_HOURS, максимум SESSION_MAX_DAYS.
+  COOKIE_SECURE: "true"
+  SESSION_IDLE_HOURS: "12"
+  SESSION_MAX_DAYS: "30"
+  # Захист від підбору пароля: блокування облікового запису і ліміт спроб з однієї IP за 15 хв.
+  LOGIN_MAX_ATTEMPTS: "5"
+  LOGIN_LOCK_MINUTES: "15"
+  LOGIN_IP_ATTEMPTS: "30"
+  # ПІБ першого адміністратора (див. ADMIN_LOGIN у секреті).
+  ADMIN_NAME: "Адміністратор"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -125,7 +148,7 @@ spec:
             - configMapRef:
                 name: purchase-config
             - secretRef:
-                name: purchase-secret         # DATABASE_URL
+                name: purchase-secret         # DATABASE_URL, SESSION_SECRET, ADMIN_LOGIN, ADMIN_PASSWORD
           env:
             # Стеля V8-heap (~75 % від limits.memory), щоб Node не брав дефолт з розміру ноди.
             - name: NODE_OPTIONS
@@ -136,12 +159,13 @@ spec:
           ports:
             - name: http
               containerPort: 3000
-          # Окремих health-ендпоінтів у застосунку немає. Порт починає слухати лише після підключення
-          # до БД і прогону міграцій, тож startup/liveness — статичний `/` (index.html, без БД), а
-          # readiness — легкий запит у БД (список контрагентів): без БД под краще тримати поза Service.
+          # /api/health — без автентифікації, робить SELECT 1 у БД (503, якщо БД недоступна).
+          # Порт починає слухати лише після підключення до БД і прогону міграцій, тож startup/readiness —
+          # /api/health, а liveness — статичний `/` (index.html, без БД): коротка недоступність БД не має
+          # перезапускати под, лише виводити його з Service. Усі інші /api/* тепер вимагають входу.
           startupProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: http
             periodSeconds: 5
             timeoutSeconds: 3
@@ -155,7 +179,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /api/contracts/counterparties
+              path: /api/health
               port: http
             periodSeconds: 15
             timeoutSeconds: 5
