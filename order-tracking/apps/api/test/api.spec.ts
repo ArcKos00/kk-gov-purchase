@@ -1,49 +1,20 @@
 import fs from 'node:fs';
-import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import request from 'supertest';
-import { DataSource } from 'typeorm';
-import type { ContractDetails, ContractInput, ContractSummary } from '@order-tracking/shared';
-import { AppModule } from '../src/app.module';
-import { setupApp } from '../src/setup';
+import type { ContractDetails, ContractSummary, Page } from '@order-tracking/shared';
 import { config } from '../src/config';
+import { Agent, contract, createTestApp, deliveryReq, TestApp } from './helpers';
 
-let app: INestApplication;
-let http: ReturnType<typeof request>;
+let t: TestApp;
+let http: Agent;
 
 beforeAll(async () => {
-  const ds = await new DataSource({ type: 'postgres', url: config.databaseUrl }).initialize();
-  await ds.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-  await ds.destroy();
-
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  app = moduleRef.createNestApplication();
-  setupApp(app);
-  await app.init();
-  http = request(app.getHttpServer());
+  t = await createTestApp();
+  http = t.admin;
 });
 
-afterAll(async () => {
-  await app.close();
-  fs.rmSync(config.uploadsDir, { recursive: true, force: true });
-});
-
-const contract = (patch: Partial<ContractInput> = {}): ContractInput => ({
-  number: 'Д-125/2026',
-  counterparty: 'ТОВ "Постачальник"',
-  contractDate: '2026-09-01',
-  expectedDeliveryDate: '2099-10-20',
-  notes: null,
-  items: [
-    { name: 'Болт М8', unit: 'шт', quantity: 100 },
-    { name: 'Гайка М8', unit: 'шт', quantity: 50 },
-  ],
-  ...patch,
-});
+afterAll(() => t.close());
 
 const delivery = (id: number, lines: { orderItemId: number; quantity: number }[], invoiceNumber = 'ВН-001') =>
-  http.post(`/api/contracts/${id}/deliveries`)
-    .field('data', JSON.stringify({ date: '2026-09-15', invoiceNumber, notes: null, lines }));
+  deliveryReq(http, id, lines, invoiceNumber);
 
 let c: ContractDetails;
 
@@ -150,7 +121,7 @@ describe('пошук', () => {
   });
 
   const found = async (query: Record<string, string>) =>
-    ((await http.get('/api/contracts').query(query).expect(200)).body as ContractSummary[]).map((x) => x.number);
+    ((await http.get('/api/contracts').query(query).expect(200)).body as Page<ContractSummary>).items.map((x) => x.number);
 
   it('за номером, контрагентом, найменуванням, датою і станом', async () => {
     expect(await found({ number: 'пс-7' })).toEqual(['ПС-7']);
