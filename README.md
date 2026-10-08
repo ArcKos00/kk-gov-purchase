@@ -49,10 +49,10 @@ deploy.yaml      Kubernetes (ConfigMap, PVC, Deployment, Service, Ingress)
 ### Docker Compose (застосунок + PostgreSQL)
 
 ```bash
-AUTH_PASSWORD=<пароль> docker compose up --build
+docker compose up --build
 ```
 
-Відкрийте http://localhost:3000 і увійдіть як `admin` (або `AUTH_USERNAME`).
+Відкрийте http://localhost:3000 і увійдіть як `admin` / `admin`.
 
 ### Розробка
 
@@ -60,7 +60,7 @@ AUTH_PASSWORD=<пароль> docker compose up --build
 
 ```bash
 npm install
-cp .env.example .env    # задайте AUTH_PASSWORD; set -a; . ./.env; set +a
+cp .env.example .env    # set -a; . ./.env; set +a
 npm run dev:api         # API на :3000
 npm run dev:web         # фронт на :5173 (проксі /api → :3000)
 ```
@@ -73,7 +73,7 @@ npm run dev:web         # фронт на :5173 (проксі /api → :3000)
 | Змінна | Призначення |
 |---|---|
 | `DATABASE_URL` | PostgreSQL |
-| `AUTH_USERNAME`, `AUTH_PASSWORD` | **обов'язкові**: логін і пароль єдиного користувача |
+| `AUTH_USERNAME`, `AUTH_PASSWORD` | логін і пароль єдиного користувача (`admin` / `admin`) |
 | `SESSION_SECRET` | ключ підпису cookie (`openssl rand -hex 32`); без нього сесії скидаються при перезапуску |
 | `SESSION_TTL_HOURS` | тривалість сесії, год (12) |
 | `COOKIE_SECURE` | Secure-cookie (за замовчуванням — у продакшені) |
@@ -83,7 +83,8 @@ npm run dev:web         # фронт на :5173 (проксі /api → :3000)
 | `LOG_PRETTY` | `true` — людиночитні логи (лише локально, потрібен dev-пакет pino-pretty) |
 | `SLOW_QUERY_MS` | поріг повільного SQL-запиту, мс (1000) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | адреса Elastic APM Server / OTel Collector; порожньо — телеметрію вимкнено |
-| `OTEL_EXPORTER_OTLP_HEADERS` | `Authorization=Bearer <secret token>` або `Authorization=ApiKey <key>` |
+| `OTEL_EXPORTER_OTLP_HEADERS` | заголовки до APM, напр. `Authorization=Bearer <token>` (у кластері не потрібен) |
+| `OTEL_CAPTURE_HEADERS` | усі HTTP-заголовки в атрибути спанів, cookie/authorization маскуються (`true`) |
 | `OTEL_SERVICE_NAME`, `APP_ENV`, `APP_VERSION` | назва сервісу, оточення і версія в APM |
 
 Решта стандартних змінних `OTEL_*` (`OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_TRACES_SAMPLER`,

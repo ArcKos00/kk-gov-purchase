@@ -4,12 +4,6 @@ import path from 'node:path';
 const env = process.env;
 const production = env.NODE_ENV === 'production';
 
-function required(name: string): string {
-  const v = env[name];
-  if (!v) throw new Error(`Не задано змінну оточення ${name}`);
-  return v;
-}
-
 export const config = {
   production,
   port: Number(env.PORT ?? 3000),
@@ -30,9 +24,9 @@ export const config = {
   slowQueryMs: Number(env.SLOW_QUERY_MS ?? 1000),
 
   auth: {
-    /** Єдиний користувач застосунку. */
-    username: required('AUTH_USERNAME'),
-    password: required('AUTH_PASSWORD'),
+    /** Єдиний користувач застосунку (за замовчуванням admin:admin). */
+    username: env.AUTH_USERNAME || 'admin',
+    password: env.AUTH_PASSWORD || 'admin',
     /**
      * Ключ підпису cookie сесії. Без нього генерується випадковий — тоді сесії
      * скидаються при кожному перезапуску.

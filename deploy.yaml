@@ -18,13 +18,12 @@
 # Секрет purchase-secret створюється руками, у yaml його немає. БД — окремий інстанс на local.storage:
 #     kubectl -n ${NAMESPACE} create secret generic purchase-secret \
 #       --from-literal=DATABASE_URL='postgres://purchase:<пароль>@local.storage:5437/purchase' \
-#       --from-literal=AUTH_USERNAME='<логін>' \
-#       --from-literal=AUTH_PASSWORD='<пароль>' \
-#       --from-literal=SESSION_SECRET="$(openssl rand -hex 32)" \
-#       --from-literal=OTEL_EXPORTER_OTLP_HEADERS='Authorization=Bearer <APM secret token>'
+#       --from-literal=SESSION_SECRET="$(openssl rand -hex 32)"
+# Логін/пароль за замовчуванням — admin:admin (ConfigMap нижче); перекрити — ключами AUTH_USERNAME /
+# AUTH_PASSWORD у purchase-secret (secretRef підключено після configMapRef, тож він має пріоритет).
 #
 # Логи — JSON у stdout (з trace_id/span_id); трейси, метрики й логи — ще й OTLP в Elastic APM
-# (OTEL_EXPORTER_OTLP_ENDPOINT у ConfigMap; порожній = вимкнено).
+# (apm-server.infrastructure, без токена — як у решти сервісів кластера).
 #
 # Вкладені файли (скани договорів/накладних) лежать на PVC purchase-uploads (RWO). Том RWO, тож
 # RollingUpdate працює через podAffinity до власного вузла (див. Deployment).
@@ -43,10 +42,18 @@ data:
   # Максимальний розмір одного файлу, МБ.
   MAX_UPLOAD_MB: "50"
   LOG_LEVEL: "info"
-  # OpenTelemetry → Elastic APM (OTLP/HTTP). Токен — у purchase-secret (OTEL_EXPORTER_OTLP_HEADERS).
+  # Вхід: один користувач. Перекрити — ключами з тими ж іменами в purchase-secret.
+  AUTH_USERNAME: "admin"
+  AUTH_PASSWORD: "admin"
+  SESSION_TTL_HOURS: "12"
+  # OpenTelemetry → Elastic APM (OTLP/HTTP): трейси, метрики, логи.
   OTEL_SERVICE_NAME: "purchase"
-  OTEL_EXPORTER_OTLP_ENDPOINT: ""          # напр. https://apm.k2.lan:8200
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://apm-server.infrastructure.svc.cluster.local:8200"
   OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+  OTEL_EXPORTER_OTLP_TIMEOUT: "10000"
+  OTEL_RESOURCE_ATTRIBUTES: "group=gov"
+  # Усі заголовки HTTP-запиту/відповіді — в атрибути спанів (cookie/authorization маскуються).
+  OTEL_CAPTURE_HEADERS: "true"
   APP_ENV: "${NAMESPACE}"
 ---
 apiVersion: v1
@@ -138,7 +145,7 @@ spec:
             - configMapRef:
                 name: purchase-config
             - secretRef:
-                name: purchase-secret         # DATABASE_URL, AUTH_*, SESSION_SECRET, OTEL_EXPORTER_OTLP_HEADERS
+                name: purchase-secret         # DATABASE_URL, SESSION_SECRET (+ необов'язково AUTH_*)
           env:
             # Стеля V8-heap (~75 % від limits.memory), щоб Node не брав дефолт з розміру ноди.
             - name: NODE_OPTIONS

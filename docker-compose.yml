@@ -20,7 +20,7 @@ services:
     environment:
       DATABASE_URL: postgres://orders:orders@db:5432/orders
       AUTH_USERNAME: ${AUTH_USERNAME:-admin}
-      AUTH_PASSWORD: ${AUTH_PASSWORD:?задайте AUTH_PASSWORD}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-admin}
       SESSION_SECRET: ${SESSION_SECRET:-}
       COOKIE_SECURE: "false"   # локально — без TLS
       # Трейси/логи/метрики в Elastic APM (або OTel Collector). Порожньо — вимкнено.
