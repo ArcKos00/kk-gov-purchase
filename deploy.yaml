@@ -37,8 +37,11 @@
 # Логи — JSON у stdout (з trace_id/span_id і користувачем); трейси й метрики — OTLP в Elastic APM
 # (apm-server.infrastructure, без токена — як у решти сервісів кластера).
 #
-# Вкладені файли (скани договорів/накладних) лежать на PVC purchase-uploads (RWO). Том RWO, тож
-# RollingUpdate працює через podAffinity до власного вузла (див. Deployment).
+# Вкладені файли (скани договорів/накладних) лежать на PVC purchase-uploads-lh (Longhorn, ReadWriteMany,
+# 2 репліки на awsbackup + gpu). HA v2: дві репліки на різних вузлах — застосунок переживає втрату вузла.
+# Спільне для подів — у базі (сесії, LISTEN/NOTIFY), файли — на RWX-томі (імена — випадкові UUID).
+# Дані зі старого local-path PVC purchase-uploads переносить скрипт ДО викатки (114-pvc-migrate.sh);
+# старий PVC видаляється руками.
 # =============================================================================
 ---
 apiVersion: v1
@@ -82,15 +85,15 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: purchase-uploads
+  name: purchase-uploads-lh
   namespace: ${NAMESPACE}
 spec:
+  storageClassName: longhorn
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
       storage: 5Gi
-  # storageClassName: ""   # задати, якщо в кластері немає default StorageClass
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -100,15 +103,15 @@ metadata:
   labels:
     app: purchase
 spec:
-  # Одна репліка свідомо: файли — на RWO-томі.
-  replicas: 1
+  # Дві репліки на різних вузлах (topologySpreadConstraints нижче): падіння пода чи вузла не зупиняє сервіс.
+  # Міграції TypeORM (migrationsRun) — на старті кожного пода; RollingUpdate піднімає поди по одному.
+  replicas: 2
   revisionHistoryLimit: 1
   # Скільки новий под має бути Ready, перш ніж старий отримає SIGTERM.
   minReadySeconds: 10
   progressDeadlineSeconds: 300
   # RollingUpdate без простою: новий под піднімається поруч (maxSurge 1), старий живе, доки новий
-  # не стане ready (maxUnavailable 0). Том — ReadWriteOnce, тому нижче podAffinity прибиває новий
-  # под до вузла, де вже працює старий: на одному вузлі RWO-том монтується обома.
+  # не стане ready (maxUnavailable 0). Том — ReadWriteMany, тож новий под може стати на будь-який вузол.
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -123,16 +126,30 @@ spec:
         app: purchase
     spec:
       terminationGracePeriodSeconds: 30
-      affinity:
-        podAffinity:
-          # Новий под — на той самий вузол, що і поточний (спільний RWO-том). Для першого пода
-          # правило до власного лейбла вважається виконаним. Наслідок: при drain вузла под не
-          # переїде сам — на час обслуговування вузла деплой поводиться як Recreate.
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - topologyKey: kubernetes.io/hostname
-              labelSelector:
-                matchLabels:
-                  app: purchase
+      # HA v2: репліки — на різних вузлах. DoNotSchedule свідомо (ScheduleAnyway якось поклав обидві на gpu);
+      # pod-template-hash — рахується лише поточний ReplicaSet, тож RollingUpdate (maxSurge 1) не блокується.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          matchLabelKeys: [pod-template-hash]
+          labelSelector:
+            matchLabels:
+              app: purchase
+      # gpu-вузол (localnvidiamachine) — другий вузол із Longhorn; з вузла, що впав, — геть за 30 с, не 5 хв.
+      tolerations:
+        - key: k2.arckos.net/gpu
+          operator: Exists
+          effect: NoSchedule
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
       securityContext:
         # користувач node (uid 1000) з базового образу
         runAsNonRoot: true
@@ -143,13 +160,15 @@ spec:
       volumes:
         - name: uploads
           persistentVolumeClaim:
-            claimName: purchase-uploads
+            claimName: purchase-uploads-lh
       initContainers:
-        # Новий том створюється root:root — віддати його uid 1000, інакше застосунок не зможе писати файли.
+        # Новий том створюється root:root — віддати його корінь uid 1000, інакше застосунок не зможе писати файли.
+        # Лише корінь, не -R: файли всередині створює сам застосунок (uid 1000), а на NFS (Longhorn RWX)
+        # рекурсивний chown кожного старту — повільний і зайвий.
         - name: fix-permissions
           image: "${REPOSITORY}:${IMAGE_TAG}"
           imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "chown -R 1000:1000 /data"]
+          command: ["sh", "-c", "chown 1000:1000 /data"]
           securityContext:
             runAsNonRoot: false
             runAsUser: 0
@@ -222,6 +241,20 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+---
+# HA v2: під час drain / оновлення вузла лишається хоча б одна репліка (друга — на іншому вузлі).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: purchase
+  namespace: ${NAMESPACE}
+  labels:
+    app: purchase
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: purchase
 ---
 apiVersion: v1
 kind: Service
