@@ -32,8 +32,9 @@ COPY packages/shared/package.json packages/shared/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 
+# Без RUN --mount: джоба «Purchase Build» збирає класичним збирачем (DOCKER_BUILDKIT=0).
 FROM base AS build
-RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
+RUN npm ci
 COPY packages packages
 COPY apps apps
 RUN npm run build
@@ -42,8 +43,7 @@ RUN npm run build
 # packages/shared — лише типи (import type), у рантаймі не потрібен; маніфест копіюється тільки
 # для того, щоб npm ci бачив усі воркспейси з package-lock.json.
 FROM base AS deps
-RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm ci --omit=dev --workspace=apps/api --include-workspace-root=false --ignore-scripts \
+RUN npm ci --omit=dev --workspace=apps/api --include-workspace-root=false --ignore-scripts \
     && mkdir -p apps/api/node_modules
 # Корені К-2 з бази Nexus — одним файлом для NODE_EXTRA_CA_CERTS (awk 1 — перевід рядка між файлами).
 RUN awk 1 /usr/local/share/ca-certificates/*.crt > /k2-ca.pem
