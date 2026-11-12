@@ -13,9 +13,9 @@
 # (npm ci --ignore-scripts), тож node_modules зі стадії deps (glibc) працюють і на musl.
 
 ARG REGISTRY=10.20.50.25:8081
-ARG NODE_VERSION=22
+ARG NODE_VERSION=26
 # Образ збірки можна підмінити на внутрішній з уже вшитим CA-ланцюжком:
-#     docker build --build-arg BASE_IMAGE=10.20.50.25:8081/node-internal-ca:22 ...
+#     docker build --build-arg BASE_IMAGE=10.20.50.25:8081/node-internal-ca:26 ...
 ARG BASE_IMAGE=${REGISTRY}/node:${NODE_VERSION}
 ARG RUNTIME_IMAGE=${REGISTRY}/node:${NODE_VERSION}-alpine
 # Дзеркало npm для npm ci. Порожнє = registry.npmjs.org.

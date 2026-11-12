@@ -19,6 +19,6 @@
     "test": "npm test -w apps/api"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=26"
   }
 }

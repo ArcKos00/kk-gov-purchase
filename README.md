@@ -103,7 +103,7 @@ docker compose up --build
 
 ### Розробка
 
-Потрібні Node.js 22.12+ (краще 24) і Docker.
+Потрібні Node.js 26 (див. `.nvmrc`) і Docker.
 
 ```bash
 git submodule update --init              # теми К-2 (packages/k2-styles); або клонувати з --recurse-submodules
