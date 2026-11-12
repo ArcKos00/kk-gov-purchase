@@ -150,35 +150,32 @@ spec:
           operator: Exists
           effect: NoExecute
           tolerationSeconds: 30
+      # PodSecurity "restricted": жодного контейнера від root. Користувач node (uid/gid 1000) з базового образу.
+      # Застосунок не ходить в API Kubernetes — токен service account у под не монтується.
+      automountServiceAccountToken: false
       securityContext:
-        # користувач node (uid 1000) з базового образу
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
+        # fsGroup — для томів, де kubelet змінює власника (RWO/emptyDir). На Longhorn RWX (NFS) kubelet
+        # власника НЕ міняє (fsGroupPolicy драйвера — ReadWriteOnceWithFSType), тому корінь purchase-uploads-lh
+        # уже віддано uid 1000 раніше (колишній initContainer fix-permissions від root, прибраний заради
+        # restricted). Зараз корінь тому — 1000:1000, режим 0777. Для НОВОГО тому перевірити до викатки:
+        #     kubectl -n ${NAMESPACE} exec deploy/purchase -- ls -lan /app/data/uploads
+        # і, якщо uid 1000 не може писати, один раз віддати корінь uid 1000 (разовий под від root — до
+        # enforce=restricted на namespace, бо restricted такий под не пустить).
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       volumes:
         - name: uploads
           persistentVolumeClaim:
             claimName: purchase-uploads-lh
-      initContainers:
-        # Новий том створюється root:root — віддати його корінь uid 1000, інакше застосунок не зможе писати файли.
-        # Лише корінь, не -R: файли всередині створює сам застосунок (uid 1000), а на NFS (Longhorn RWX)
-        # рекурсивний chown кожного старту — повільний і зайвий.
-        - name: fix-permissions
-          image: "${REPOSITORY}:${IMAGE_TAG}"
-          imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "chown 1000:1000 /data"]
-          securityContext:
-            runAsNonRoot: false
-            runAsUser: 0
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
-          volumeMounts:
-            - name: uploads
-              mountPath: /data
+        # Корінь образу — лише читання; тимчасові файли Node/бібліотек — сюди.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
       containers:
         - name: purchase
           image: "${REPOSITORY}:${IMAGE_TAG}"
@@ -197,6 +194,8 @@ spec:
           volumeMounts:
             - name: uploads
               mountPath: /app/data/uploads
+            - name: tmp
+              mountPath: /tmp
           ports:
             - name: http
               containerPort: 3000
@@ -232,6 +231,7 @@ spec:
                 command: ["sleep", "5"]
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           resources:
