@@ -2,7 +2,7 @@
 # тегом і digest; правила — пакети реєстру semgrep.dev; метрики вимкнено. Звіт (SARIF + JSON) — артефакт
 # `semgrep-report`, зведення — у Summary запуску (лише rule-id/файл/рядок, без фрагментів коду).
 #
-# Режим: SEMGREP_BLOCK = 'false'.
+# Режим: SEMGREP_BLOCK = 'true'.
 #   'true'  — знахідка severity ERROR/CRITICAL/HIGH або збій самого Semgrep валить перевірку (fail-closed).
 #   'false' — лише звіт (перевірка завжди зелена). Перехід на блокування: розібрати ERROR (хибні —
 #             `// nosemgrep: <rule-id> — причина`), поставити 'true' і прибрати `continue-on-error`.
@@ -27,11 +27,10 @@ jobs:
   semgrep:
     runs-on: ubuntu-24.04  # GitHub-hosted: репо публічне (PR із форку виконав би код на self-hosted) — org-runner k2-master йому недоступний/небезпечний
     timeout-minutes: 15
-    continue-on-error: true  # лише звіт; прибрати разом із SEMGREP_BLOCK: 'true'
     env:
       SEMGREP_IMAGE: docker.io/semgrep/semgrep:1.182.1@sha256:451b3d875c00dac7ed5db5293e584a07de11449a409c10b3c2d2652f429630b6
       SEMGREP_CONFIGS: p/default p/secrets p/dockerfile p/github-actions p/javascript p/typescript p/nodejs p/react
-      SEMGREP_BLOCK: 'false'
+      SEMGREP_BLOCK: 'true'
     steps:
       - uses: actions/checkout@v4
         with:
