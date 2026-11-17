@@ -9,7 +9,7 @@ import { config } from './config';
  *   * /assets/* — файли з хешем у назві: кешуються назавжди, нова збірка = нові імена;
  *   * index.html (і SPA-фолбек на будь-який шлях) — no-store: після викатки одразу віддається нова збірка,
  *     навіть з правилом «Cache Everything»;
- *   * /api/*, /auth/* — no-store: дані (зокрема анонімні) у кеші CDN не осідають;
+ *   * /api/*, /auth/*, /k2-security/* — no-store: дані (зокрема анонімні) у кеші CDN не осідають;
  *   * неіснуючий /assets/* — 404 (не index.html), теж no-store: старий кеш вкладки не отримає HTML замість JS.
  * Відкриті вкладки дізнаються про нову збірку із заголовка X-App-Build (див. apps/web/src/version.ts).
  */
@@ -28,7 +28,8 @@ export function readBuildId(dir = config.webDist): string | null {
   }
 }
 
-const isApi = (p: string) => p === '/api' || p.startsWith('/api/') || p === '/auth' || p.startsWith('/auth/');
+const isApi = (p: string) =>
+  p === '/api' || p.startsWith('/api/') || p === '/auth' || p.startsWith('/auth/') || p.startsWith('/k2-security/');
 
 export function serveWeb(app: NestExpressApplication, dir = config.webDist) {
   const buildId = readBuildId(dir);

@@ -1,6 +1,6 @@
 {
   "name": "@order-tracking/api",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -11,6 +11,7 @@
     "dev:debug": "nest start --watch --debug=9229"
   },
   "dependencies": {
+    "@k2/security": "0.3.0",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
@@ -65,12 +66,24 @@
     "rootDir": ".",
     "testRegex": "test/.*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.ts$": "ts-jest"
+      "^.+\\.ts$": "ts-jest",
+      "^.+/node_modules/@k2/.+\\.js$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "allowJs": true
+          },
+          "diagnostics": false
+        }
+      ]
     },
     "testEnvironment": "node",
     "testTimeout": 30000,
     "setupFiles": [
       "<rootDir>/test/setup-env.ts"
+    ],
+    "transformIgnorePatterns": [
+      "/node_modules/(?!@k2/)"
     ]
   }
 }

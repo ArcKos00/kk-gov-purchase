@@ -20,7 +20,7 @@ export default defineConfig(({ command }) => {
     server: {
       port: 5173,
       // У розробці API (NestJS) працює окремо на :3000
-      proxy: { '/api': 'http://localhost:3000', '/auth': 'http://localhost:3000' },
+      proxy: { '/api': 'http://localhost:3000', '/auth': 'http://localhost:3000', '/k2-security': 'http://localhost:3000' },
     },
   };
 });

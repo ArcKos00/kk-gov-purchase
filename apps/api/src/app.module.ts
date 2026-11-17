@@ -14,9 +14,10 @@ import { FilesController } from './files/files.controller';
 import { FilesService } from './files/files.service';
 import { PoolController } from './pool/pool.controller';
 import { PoolService } from './pool/pool.service';
+import { SecurityModule } from './security/security.module';
 
 @Module({
-  imports: [LoggerModule, DatabaseModule, AuthModule, AuditModule, EventsModule],
+  imports: [LoggerModule, DatabaseModule, AuthModule, AuditModule, EventsModule, SecurityModule],
   controllers: [HealthController, ContractsController, DeliveriesController, FilesController, PoolController],
   providers: [ContractsService, DeliveriesService, FilesService, PoolService, TelemetryShutdown],
 })

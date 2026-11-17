@@ -59,6 +59,16 @@
   анонімно; у шапці — кнопка «Увійти». Створення, редагування, видалення, поставки й недопоставки — лише
   після входу (API без входу відповідає `401`, форми змін ведуть на вхід). Журнал — як і раніше, лише
   адміністратору. `ANONYMOUS_READ=false` — вимкнути анонімний перегляд (усе лише після входу).
+- **Безпековий шаблон К-2** (`@k2/security` 0.3.0 з Nexus, baseline 1): на всіх сторінках — і на вході, і в
+  перегляді без входу — водяний знак «Ім'я (логін) · дата час» поверх усього (без людини — «Облік замовлень»,
+  так само офлайн; прибраний — повертається), друк — лише попередження «Друк заборонено» (`@media print`, знак
+  лишається). Заборони скріншотів немає свідомо — знак робить знімок не анонімним. Політику рахує сервер
+  (`GET /k2-security/policy`, `no-store`); поки її немає — усе ввімкнено. Персональних винятків немає: реєстр
+  винятків K2 Auth доходить лише claim-ом `k2_sec` ID-токена K2 Auth, а застосунок входить напряму в Keycloak —
+  друк заборонено всім (fail-closed). Події (спроба друку, підробка знака, політика не прочиталась) —
+  `POST /k2-security/events` → по рядку ECS JSON у stdout (`event.dataset: k2.security`) → SIEM. Заголовки на всі
+  відповіді: `Permissions-Policy` (зокрема `display-capture=()`), `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy`. Код — `apps/api/src/security/`, `apps/web/src/Security.tsx`.
 - **Журнал дій** (сторінка «Журнал», на договорі — «Історія»): хто, коли, з якої IP і що зробив.
   Лише для адміністратора — роль користувача `gov-purchase-admin` у realm Keycloak (`ADMIN_ROLE`, кілька — через кому); у dev-realm вона в `dev`, в `operator` — ні.
   - усі зміни даних — створення/редагування/видалення договору, файл договору, недопоставка, додавання й
@@ -83,6 +93,7 @@ apps/api         NestJS: REST API під /api, роздає зібраний ф�
   src/audit      журнал дій: AuditService (записи з сервісів у транзакції), невдалі спроби, кліки з браузера
   src/logging    pino-логер, логер TypeORM
   src/telemetry  OpenTelemetry → Elastic APM (telemetry.ts імпортується в main.ts одразу після env.ts)
+  src/security   безпековий шаблон К-2 (@k2/security): /k2-security/policy, /k2-security/events, заголовки
 apps/web         React + Vite
 packages/shared  TypeScript-типи контракту API, спільні для бекенду і фронту
 packages/k2-styles  git-сабмодуль: теми К-2 (https://github.com/ArcKos00/k2-styles)
@@ -152,6 +163,7 @@ npm run dev:web                          # фронт на http://localhost:5173
 | `OTEL_CAPTURE_HEADERS` | усі HTTP-заголовки в атрибути спанів, cookie/authorization маскуються (`true`) |
 | `OTEL_CAPTURE_BODY` | тіла POST/PUT/DELETE у трейсах (тіло входу `/auth/*` — ніколи) |
 | `OTEL_SERVICE_NAME`, `ELASTIC_APM_ENVIRONMENT`, `APP_VERSION` | назва сервісу, оточення і версія в APM |
+| `K2_SECURITY_PRINT`, `K2_SECURITY_WATERMARK` | `on`/`off` — перемкнути контроль безпекового шаблону; **лише dev і стенди** (у deploy.yaml їх немає), кожен — подія `config_override` на старті |
 
 Решта стандартних змінних `OTEL_*` (`OTEL_TRACES_SAMPLER`, `OTEL_RESOURCE_ATTRIBUTES`, …) теж працює.
 
@@ -186,8 +198,13 @@ DATABASE_URL=... npm start   # http://localhost:3000
 | GET | `/api/files/:id` | завантажити файл |
 | GET | `/api/audit?kind=&actor=&contractId=&dateFrom=&dateTo=&before=` | журнал дій (по 100, курсор `before`) |
 | POST | `/api/audit/events` | кліки й переходи з браузера |
+| GET | `/k2-security/policy` | політика безпекового шаблону для цієї людини (без входу теж), `no-store` |
+| POST | `/k2-security/events` | події безпеки з браузера: 403 з іншого сайту, 401 без входу, 413 > 64 КБ, 400 не JSON, інакше 204 |
 
 Помилки валідації — `422` з `{ errors: { "items.0.quantity": "..." } }`; ключ `_` — загальна помилка.
+
+`@k2/*` — з Nexus К-2 (`.npmrc`: `https://k2:8081/repository/npm/`; `k2` = 10.20.50.25, у DNS його немає —
+`/etc/hosts` і `NODE_EXTRA_CA_CERTS` з коренем К-2 для `npm install`; `docker build --add-host k2:10.20.50.25`).
 
 ## Перевірки
 
