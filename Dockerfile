@@ -3,7 +3,9 @@
 # який Nest роздає сам (ServeStaticModule, усе поза /api/*).
 #
 # Контекст збірки — корінь репозиторію:
-#     docker build -t purchase:local .
+#     docker build --add-host k2:10.20.50.25 --pull -t purchase:local .
+# k2 = Nexus (npm @k2/security, .npmrc) — --add-host (Jenkins «Purchase Build» так і збирає); образ збірки
+# ${REGISTRY}/node:<v> довіряє кореню К-2.
 # Реєстр і версію Node можна перевизначити, не чіпаючи файл:
 #     docker build --build-arg REGISTRY=docker.io/library --build-arg NPM_REGISTRY=https://registry.npmjs.org ...
 #
@@ -27,7 +29,7 @@ ARG NPM_REGISTRY
 RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY" --location=global; fi
 WORKDIR /app
 # Спершу лише маніфести — шари залежностей перезбираються тільки при зміні залежностей, не коду.
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/

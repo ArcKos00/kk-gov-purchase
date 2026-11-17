@@ -12,6 +12,12 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
+    // @k2/security — лише ESM з `exports`; API — CommonJS (moduleResolution node10 `exports` не читає), тож типи —
+    // напряму з dist. У рантаймі це require(esm) Node 26 (як openid-client), у jest — трансформ (package.json).
+    "paths": {
+      "@k2/security": ["../../node_modules/@k2/security/dist/core/index.d.ts"],
+      "@k2/security/server": ["../../node_modules/@k2/security/dist/server/index.d.ts"]
+    },
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,
