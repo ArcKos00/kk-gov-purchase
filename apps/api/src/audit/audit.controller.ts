@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Post, Query, Req } from '@nestjs/common';
+import { ApiCookieAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { AuditPage } from '@order-tracking/shared';
 import type { SessionRequest } from '../auth/session';
 import { AdminOnly } from '../auth/auth.guard';
@@ -7,11 +8,16 @@ import { AuditRecord, AuditService } from './audit.service';
 import { entityOfPath } from './audit.interceptor';
 import { AuditSearchDto, UiEventBatchDto } from './dto';
 
+@ApiTags('Журнал')
+@ApiCookieAuth('sid')
 @Controller('audit')
 export class AuditController {
   constructor(private readonly audit: AuditService) {}
 
   /** Журнал бачить лише адміністратор; писати кліки (events нижче) — усі. */
+  @ApiOperation({ summary: 'Журнал дій', description: 'Лише адміністратору (роль ADMIN_ROLE).' })
+  @ApiResponse({ status: 401, description: 'Потрібно увійти' })
+  @ApiResponse({ status: 403, description: 'Лише для адміністратора' })
   @Get()
   @AdminOnly()
   search(@Query() query: AuditSearchDto): Promise<AuditPage> {
@@ -19,6 +25,8 @@ export class AuditController {
   }
 
   /** Кліки й переходи з браузера (пакетами; при закритті вкладки — sendBeacon). */
+  @ApiOperation({ summary: 'Кліки й переходи з браузера', description: 'Пакетами до 100; значення полів форм не збираються.' })
+  @ApiResponse({ status: 401, description: 'Потрібно увійти' })
   @Post('events')
   @HttpCode(204)
   async events(@Req() req: SessionRequest, @Body() batch: UiEventBatchDto): Promise<void> {

@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import type { CurrentUser } from '@order-tracking/shared';
 import { config } from '../config';
@@ -11,6 +12,7 @@ import type { SessionRequest, SessionUser } from './session';
 type TokenResponse = { access_token: string; id_token?: string };
 
 /** Вхід лише через сторінку Keycloak (Code + PKCE S256); форми з паролем (password grant) немає. */
+@ApiTags('Вхід')
 @Controller('auth')
 @Public()
 export class AuthController {
@@ -20,6 +22,7 @@ export class AuthController {
   ) {}
 
   /** Вхід через сторінку Keycloak (Code + PKCE). Redirect URI: `${PUBLIC_URL}/auth/callback`. */
+  @ApiExcludeEndpoint()
   @Get('login')
   async login(@Req() req: SessionRequest, @Res() res: Response, @Query('returnTo') returnTo?: string) {
     const back = safePath(returnTo);
@@ -30,6 +33,7 @@ export class AuthController {
     res.redirect(url);
   }
 
+  @ApiExcludeEndpoint()
   @Get('callback')
   async callback(@Req() req: SessionRequest, @Res() res: Response) {
     const pending = req.session?.login;
@@ -40,6 +44,8 @@ export class AuthController {
     res.redirect(pending.returnTo);
   }
 
+  @ApiOperation({ summary: 'Поточний користувач' })
+  @ApiResponse({ status: 401, description: 'Потрібно увійти' })
   @Get('me')
   me(@Req() req: SessionRequest): CurrentUser {
     if (!currentUser(req)) throw new UnauthorizedException('Потрібно увійти');
@@ -47,6 +53,7 @@ export class AuthController {
   }
 
   /** Вихід: сесію знищено, токен відкликано; для входу через сторінку Keycloak — ще й його end-session URL. */
+  @ApiOperation({ summary: 'Вихід', description: 'Сесію знищено; у відповіді — адреса виходу з Keycloak (або null).' })
   @Post('logout')
   async logout(@Req() req: SessionRequest, @Res() res: Response) {
     const s = req.session;

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { Controller, Get, NotFoundException, Param, ParseIntPipe, Res } from '@nestjs/common';
+import { ApiCookieAuth, ApiOperation, ApiParam, ApiProduces, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Response } from 'express';
 import { Repository } from 'typeorm';
@@ -9,6 +10,8 @@ import { AuditContext, Ctx } from '../audit/audit-context';
 import { FilesService } from './files.service';
 import { Viewable } from '../auth/auth.guard';
 
+@ApiTags('Файли')
+@ApiCookieAuth('sid')
 @Controller('files')
 export class FilesController {
   constructor(
@@ -17,6 +20,10 @@ export class FilesController {
     private readonly audit: AuditService,
   ) {}
 
+  @ApiOperation({ summary: 'Завантажити файл', description: 'Завжди як вкладення; відкриття потрапляє в журнал.' })
+  @ApiParam({ name: 'id', description: 'Ідентифікатор файлу' })
+  @ApiProduces('application/octet-stream')
+  @ApiResponse({ status: 200, description: 'Вміст файлу' })
   @Get(':id')
   @Viewable()
   async download(@Param('id', ParseIntPipe) id: number, @Res() res: Response, @Ctx() ctx: AuditContext) {

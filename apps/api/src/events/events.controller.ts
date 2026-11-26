@@ -1,4 +1,5 @@
 import { Controller, MessageEvent, Req, Sse } from '@nestjs/common';
+import { ApiCookieAuth, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger';
 import { interval, map, merge, Observable, takeUntil, timer } from 'rxjs';
 import type { SessionRequest } from '../auth/session';
 import { EventsService } from './events.service';
@@ -7,11 +8,15 @@ import { Viewable } from '../auth/auth.guard';
 /** Коментар-пінг, щоб ingress/haproxy не рвали «тихе» з'єднання за таймаутом. */
 const PING_MS = 25_000;
 
+@ApiTags('Живі оновлення')
+@ApiCookieAuth('sid')
 @Controller('events')
 export class EventsController {
   constructor(private readonly live: EventsService) {}
 
   /** Потік змін (SSE) для всіх відкритих вкладок. Закривається, коли закінчується вхід; без входу — для перегляду. */
+  @ApiOperation({ summary: 'Потік змін (SSE)', description: 'text/event-stream: нове чи змінене іншими користувачами; пінг кожні 25 с.' })
+  @ApiProduces('text/event-stream')
   @Sse()
   @Viewable()
   stream(@Req() req: SessionRequest): Observable<MessageEvent> {
