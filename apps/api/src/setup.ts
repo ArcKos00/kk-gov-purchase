@@ -9,6 +9,7 @@ import { serveWeb } from './web';
 import { serveOpenApi } from './openapi';
 import { securityEventsGate, securityHeaders } from './security/security';
 import { apiDocsCors } from './security/api-docs-cors';
+import { originCheck } from './security/origin-check';
 
 /** Спільне налаштування для main.ts і тестів. */
 export function setupApp(app: INestApplication) {
@@ -18,6 +19,9 @@ export function setupApp(app: INestApplication) {
   // CORS для «Документації API» (API_DOCS_ORIGIN, лише /api/*, /auth/me, /auth/logout) — до статики й сесії:
   // preflight відповідає одразу, без сесії.
   app.use(apiDocsCors);
+  // CSRF: запис на /api/* і /auth/* — лише з Origin цього сервісу (PUBLIC_URL) чи документації API (лише /api/*);
+  // після CORS — щоб «Документація API» прочитала 403, до сесії й парсерів тіла — чужий запит далі не йде.
+  app.use(originCheck);
   // За ingress: req.ip — адреса клієнта з X-Forwarded-For, req.secure — з X-Forwarded-Proto (лише від довірених проксі).
   (app as NestExpressApplication).set('trust proxy', config.trustProxy);
   // /auth/* і /k2-security/* (безпековий шаблон К-2, security/) — без префікса /api.
