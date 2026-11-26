@@ -3,6 +3,20 @@ import path from 'node:path';
 const truthy = (v: string | undefined) => v === 'true' || v === '1';
 const production = process.env.NODE_ENV === 'production';
 
+/** `https://host[:port]` без шляху, або null — порожнє, `*`, шлях чи сміття (жодних здогадок). */
+export function parseOrigin(value: string | undefined): string | null {
+  const raw = value?.trim() ?? '';
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if ((url.protocol === 'https:' || url.protocol === 'http:') && url.origin === raw.replace(/\/$/, '')) return url.origin;
+  } catch {
+    /* не URL */
+  }
+  console.warn(`API_DOCS_ORIGIN «${raw}» — не origin (https://host), CORS вимкнено`);
+  return null;
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   databaseUrl: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/orders',
@@ -47,6 +61,12 @@ export const config = {
     .filter(Boolean),
   /** Перегляд, пошук і фільтри без входу (маршрути @Viewable). false — усе лише після входу. */
   anonymousRead: process.env.ANONYMOUS_READ !== 'false',
+  /**
+   * «Документація API» (kk-api-docs): її «Try it out» викликає `/api/*` з браузера людини з її сесією (кука `sid`,
+   * той самий сайт). CORS з credentials — лише для цього одного origin (`security/api-docs-cors.ts`).
+   * Порожньо чи не origin — CORS вимкнено.
+   */
+  apiDocsOrigin: parseOrigin(process.env.API_DOCS_ORIGIN),
   /** AUTH_DISABLED: чи dev-користувач — адміністратор (false — перевірити застосунок без прав адміна). */
   devUserAdmin: process.env.DEV_USER_ADMIN !== 'false',
 };
