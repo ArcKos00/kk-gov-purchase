@@ -8,12 +8,16 @@ import { PgSessionStore } from './auth/pg-session.store';
 import { serveWeb } from './web';
 import { serveOpenApi } from './openapi';
 import { securityEventsGate, securityHeaders } from './security/security';
+import { apiDocsCors } from './security/api-docs-cors';
 
 /** Спільне налаштування для main.ts і тестів. */
 export function setupApp(app: INestApplication) {
   app.useLogger(app.get(Logger));
   // Заголовки безпекового шаблону К-2 (@k2/security) — першими, на всі відповіді, статику фронту теж.
   app.use(securityHeaders);
+  // CORS для «Документації API» (API_DOCS_ORIGIN, лише /api/*, /auth/me, /auth/logout) — до статики й сесії:
+  // preflight відповідає одразу, без сесії.
+  app.use(apiDocsCors);
   // За ingress: req.ip — адреса клієнта з X-Forwarded-For, req.secure — з X-Forwarded-Proto (лише від довірених проксі).
   (app as NestExpressApplication).set('trust proxy', config.trustProxy);
   // /auth/* і /k2-security/* (безпековий шаблон К-2, security/) — без префікса /api.

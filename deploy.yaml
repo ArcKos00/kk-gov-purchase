@@ -67,6 +67,9 @@ data:
   AUTH_DISABLED: "false"
   # Ролі адміністратора (журнал дій), через кому. Лише власна роль застосунку — не спільна «гола» admin realm-у.
   ADMIN_ROLE: "gov-purchase-admin"
+  # «Документація API»: її «Try it out» викликає /api/* з сесією людини — CORS з кукі лише для цього origin
+  # (apps/api/src/security/api-docs-cors.ts). Порожньо — CORS вимкнено.
+  API_DOCS_ORIGIN: "https://api-docs.kub.k2.lan"
   # Перегляд, пошук і фільтри без входу; зміни — лише після входу. "false" — усе лише після входу.
   ANONYMOUS_READ: "true"
   # OpenTelemetry → Elastic APM (OTLP/HTTP): трейси, метрики, логи.

@@ -80,6 +80,7 @@
   - кліки по кнопках/посиланнях і переходи між сторінками (значення полів форм не збираються);
   - `audit_log` лише доповнюється (тригер забороняє UPDATE/DELETE); кожен запис має `trace_id`.
 - **Опис API (OpenAPI 3)**: `GET /api/openapi.json` — схема всіх маршрутів API (описи українською, `servers: /`), **без входу** — щоб сервіс «Документація API» стягував її через ingress (`https://purchase.gov.kub.k2.lan/api/openapi.json`). Відкрито лише сам JSON-опис: дані, зміни й журнал — як і раніше (без входу 401/403, `ANONYMOUS_READ` не впливає на опис); Swagger UI не підключено. Будується з контролерів і DTO (`@nestjs/swagger`, `apps/api/src/openapi.ts`); `test/openapi.spec.ts` перевіряє, що кожен маршрут описано.
+- **«Try it out» з «Документації API»** (1.3.0): CORS з credentials рівно для `API_DOCS_ORIGIN` (точний збіг `Origin`, `Vary: Origin`; preflight — `GET, POST, PUT, DELETE`, заголовки `content-type, authorization, x-csrf-token, x-requested-with, x-tab-id`, `max-age` 600), тож людина викликає маршрути зі сторінки опису зі своєю сесією `sid` (кука `SameSite=Lax` не змінена — той самий сайт). Будь-який інший origin CORS не отримує (`apps/api/src/security/api-docs-cors.ts`).
 - **Логи**: структурований JSON (pino) у stdout — кожен HTTP-запит, кожна дія з журналу, помилки й
   повільні SQL-запити. У кожному рядку `trace_id`, `span_id`, `user`, `req.id` (заголовок `X-Request-Id`).
 - **OpenTelemetry → Elastic APM** (як у litopys): трейси (HTTP, Express, Nest, PostgreSQL) і метрики
@@ -164,6 +165,7 @@ npm run dev:web                          # фронт на http://localhost:5173
 | `OTEL_CAPTURE_HEADERS` | усі HTTP-заголовки в атрибути спанів, cookie/authorization маскуються (`true`) |
 | `OTEL_CAPTURE_BODY` | тіла POST/PUT/DELETE у трейсах (тіло входу `/auth/*` — ніколи) |
 | `OTEL_SERVICE_NAME`, `ELASTIC_APM_ENVIRONMENT`, `APP_VERSION` | назва сервісу, оточення і версія в APM |
+| `API_DOCS_ORIGIN` | origin «Документації API» (`https://api-docs.kub.k2.lan` у deploy.yaml): лише йому CORS з кукі на `/api/*`, `/auth/me`, `/auth/logout` — «Try it out» з сесією людини; порожньо — CORS вимкнено |
 | `K2_SECURITY_PRINT`, `K2_SECURITY_WATERMARK` | `on`/`off` — перемкнути контроль безпекового шаблону; **лише dev і стенди** (у deploy.yaml їх немає), кожен — подія `config_override` на старті |
 
 Решта стандартних змінних `OTEL_*` (`OTEL_TRACES_SAMPLER`, `OTEL_RESOURCE_ATTRIBUTES`, …) теж працює.
