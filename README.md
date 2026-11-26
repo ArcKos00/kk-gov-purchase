@@ -81,6 +81,7 @@
   - `audit_log` лише доповнюється (тригер забороняє UPDATE/DELETE); кожен запис має `trace_id`.
 - **Опис API (OpenAPI 3)**: `GET /api/openapi.json` — схема всіх маршрутів API (описи українською, `servers: /`), **без входу** — щоб сервіс «Документація API» стягував її через ingress (`https://purchase.gov.kub.k2.lan/api/openapi.json`). Відкрито лише сам JSON-опис: дані, зміни й журнал — як і раніше (без входу 401/403, `ANONYMOUS_READ` не впливає на опис); Swagger UI не підключено. Будується з контролерів і DTO (`@nestjs/swagger`, `apps/api/src/openapi.ts`); `test/openapi.spec.ts` перевіряє, що кожен маршрут описано.
 - **«Try it out» з «Документації API»** (1.3.0): CORS з credentials рівно для `API_DOCS_ORIGIN` (точний збіг `Origin`, `Vary: Origin`; preflight — `GET, POST, PUT, DELETE`, заголовки `content-type, authorization, x-csrf-token, x-requested-with, x-tab-id`, `max-age` 600), тож людина викликає маршрути зі сторінки опису зі своєю сесією `sid` (кука `SameSite=Lax` не змінена — той самий сайт). Будь-який інший origin CORS не отримує (`apps/api/src/security/api-docs-cors.ts`).
+- **Захист від CSRF — перевірка `Origin`** (1.4.0): кука `sid` — `SameSite=Lax`, а сусіди `*.kub.k2.lan` — той самий сайт, тож без перевірки чужа сторінка могла б надіслати форму чи multipart від імені людини. Тепер кожен запит, що щось змінює (усе, крім `GET`/`HEAD`/`OPTIONS`), на `/api/*` і `/auth/*` проходить, лише якщо `Origin` точно дорівнює origin сервісу (`PUBLIC_URL`, у проді `https://purchase.gov.kub.k2.lan`) або — лише на `/api/*` — точно `API_DOCS_ORIGIN`. Без `Origin` — за `Sec-Fetch-Site`: `same-origin` пропускаємо, інші значення відхиляємо. Без обох заголовків запит пропускаємо, як у Бастіоні: браузер на запис з іншого сайту ставить хоча б один із них, тож це не браузер (curl, сервер-сервер) і кук людини в нього немає. Інакше — `403` з JSON `{ code: 'cross_site', message: 'Запит прийшов з іншого сайту…' }`. Винятки — кроки входу `/auth/login`, `/auth/callback` (перехід від Keycloak). Back-channel logout у застосунку немає, а виклик сервер-сервер іде без цих заголовків. `POST /auth/logout` з «Документації API» тепер `403`. Фронт ходить same-origin, тож для нього нічого не змінилось. Код — `apps/api/src/security/origin-check.ts`, тест — `test/origin-check.spec.ts`.
 - **Логи**: структурований JSON (pino) у stdout — кожен HTTP-запит, кожна дія з журналу, помилки й
   повільні SQL-запити. У кожному рядку `trace_id`, `span_id`, `user`, `req.id` (заголовок `X-Request-Id`).
 - **OpenTelemetry → Elastic APM** (як у litopys): трейси (HTTP, Express, Nest, PostgreSQL) і метрики
@@ -152,7 +153,7 @@ npm run dev:web                          # фронт на http://localhost:5173
 |---|---|
 | `DATABASE_URL` | PostgreSQL |
 | `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` | realm і клієнт Keycloak (confidential, Standard flow + PKCE S256; Direct Access Grants вимкнено) |
-| `PUBLIC_URL` | адреса, яку бачить браузер: redirect URI = `PUBLIC_URL/auth/callback`; `https` → Secure-кука |
+| `PUBLIC_URL` | адреса, яку бачить браузер: redirect URI = `PUBLIC_URL/auth/callback`; `https` → Secure-кука; її origin — єдиний «свій» `Origin` для запису (перевірка CSRF) |
 | `SESSION_SECRET` | ключ підпису кукі `sid` (`openssl rand -hex 32`), сталий між викатками |
 | `SESSION_MAX_HOURS` | скільки живе один вхід, год (12) |
 | `AUTH_DISABLED` | `true` — без Keycloak (лише розробка; при `NODE_ENV=production` заборонено) |
@@ -179,7 +180,7 @@ DATABASE_URL=... npm start   # http://localhost:3000
 
 ## API
 
-Усе під `/api`, крім `/api/health*`, вимагає входу (інакше `401`).
+Усе під `/api`, крім `/api/health*`, вимагає входу (інакше `401`). Запис (`POST`/`PUT`/`PATCH`/`DELETE`) на `/api/*` і `/auth/*` з чужого `Origin` — `403` (див. «Захист від CSRF»).
 
 | Метод | Шлях | Що робить |
 |---|---|---|
