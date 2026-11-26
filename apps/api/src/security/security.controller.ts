@@ -1,6 +1,7 @@
 import {
   Controller, Get, Header, HttpCode, type OnModuleInit, Post, Req, Res, UnauthorizedException,
 } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { acceptClientEvents, policyResponse, writeSecurityEvent } from '@k2/security/server';
 import { currentUser } from '../audit/audit-context';
@@ -16,6 +17,7 @@ import { securityEventContext, securityPolicyFor, securityStartupEvents } from '
  * pino: logger застосунку їх не обгортає. Звідти — Filebeat → SIEM (`event.dataset: k2.security`).
  */
 @Public()
+@ApiTags('Безпековий шаблон К-2')
 @Controller('k2-security')
 export class SecurityController implements OnModuleInit {
   /** Перемикач середовища — теж слід: на старті по запису на кожен. */
@@ -28,6 +30,7 @@ export class SecurityController implements OnModuleInit {
    * усе ввімкнено, знак з назвою застосунку. `no-store, private` — проксі, Cloudflare і диск браузера її не
    * кешують (інакше на спільному ПК знак показав би попередню людину).
    */
+  @ApiOperation({ summary: 'Політика безпекового шаблону', description: 'Хто на водяному знаку, чи заборонено друк; no-store.' })
   @Get('policy')
   policy(@Req() req: SessionRequest, @Res() res: Response): void {
     const answer = policyResponse(securityPolicyFor(currentUser(req)));
@@ -39,6 +42,9 @@ export class SecurityController implements OnModuleInit {
    * `securityEventsGate` (setup.ts) ще до парсерів Nest; тут — лише відомі дії, ≤ 20 за запит
    * (`acceptClientEvents`), і 204 навіть якщо жодної не прийнято.
    */
+  @ApiOperation({ summary: 'Події безпекового шаблону з браузера', description: 'Спроба друку, підробка знака тощо → SIEM.' })
+  @ApiResponse({ status: 401, description: 'Потрібно увійти' })
+  @ApiResponse({ status: 403, description: 'Запит з іншого сайту' })
   @Post('events')
   @HttpCode(204)
   @Header('Cache-Control', 'no-store, private')

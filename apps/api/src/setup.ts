@@ -6,6 +6,7 @@ import { config } from './config';
 import { validationPipe } from './common/validation';
 import { PgSessionStore } from './auth/pg-session.store';
 import { serveWeb } from './web';
+import { serveOpenApi } from './openapi';
 import { securityEventsGate, securityHeaders } from './security/security';
 
 /** Спільне налаштування для main.ts і тестів. */
@@ -25,6 +26,8 @@ export function setupApp(app: INestApplication) {
   app.useGlobalPipes(validationPipe);
   // Фронт (якщо зібрано) і заголовки кешу — до сесії: статиці сесія не потрібна.
   serveWeb(app as NestExpressApplication);
+  // Опис API (GET /api/openapi.json) — без входу і до сесії; решта /api/* — як і раніше під AuthGuard.
+  serveOpenApi(app);
 
   if (!config.authDisabled) {
     app.use(

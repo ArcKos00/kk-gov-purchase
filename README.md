@@ -79,6 +79,7 @@
   - вхід, невдалий вхід, вихід; відкриття файлів;
   - кліки по кнопках/посиланнях і переходи між сторінками (значення полів форм не збираються);
   - `audit_log` лише доповнюється (тригер забороняє UPDATE/DELETE); кожен запис має `trace_id`.
+- **Опис API (OpenAPI 3)**: `GET /api/openapi.json` — схема всіх маршрутів API (описи українською, `servers: /`), **без входу** — щоб сервіс «Документація API» стягував її через ingress (`https://purchase.gov.kub.k2.lan/api/openapi.json`). Відкрито лише сам JSON-опис: дані, зміни й журнал — як і раніше (без входу 401/403, `ANONYMOUS_READ` не впливає на опис); Swagger UI не підключено. Будується з контролерів і DTO (`@nestjs/swagger`, `apps/api/src/openapi.ts`); `test/openapi.spec.ts` перевіряє, що кожен маршрут описано.
 - **Логи**: структурований JSON (pino) у stdout — кожен HTTP-запит, кожна дія з журналу, помилки й
   повільні SQL-запити. У кожному рядку `trace_id`, `span_id`, `user`, `req.id` (заголовок `X-Request-Id`).
 - **OpenTelemetry → Elastic APM** (як у litopys): трейси (HTTP, Express, Nest, PostgreSQL) і метрики
